@@ -41,7 +41,7 @@ for fname in FOLD_NAMES:
         for sd in SEEDS:
             p = dict(objective='binary', metric='auc', learning_rate=0.05, num_leaves=63,
                      min_data_in_leaf=200, feature_fraction=0.8, bagging_fraction=0.8,
-                     bagging_freq=1, verbose=-1, seed=sd, num_threads=8)
+                     bagging_freq=1, verbose=-1, seed=sd, num_threads=7)
             box={'primary':-1}
             def cbe(env):
                 if env.iteration % 20 and env.iteration != env.end_iteration-1: return
