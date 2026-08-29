@@ -53,9 +53,14 @@ def _extract_json(text):
 
 
 class AnthropicProposer:
-    def __init__(self, model='claude-opus-4-5', max_tokens=4000, api_key=None):
+    def __init__(self, model='claude-sonnet-5', max_tokens=4000, api_key=None,
+                 workspace_id=None):
         from anthropic import Anthropic
-        self.client = Anthropic(api_key=api_key or os.environ.get('ANTHROPIC_API_KEY'))
+        # identity-linked keys must name the workspace the request acts in
+        ws = workspace_id or os.environ.get('ANTHROPIC_WORKSPACE_ID')
+        headers = {'anthropic-workspace-id': ws} if ws else None
+        self.client = Anthropic(api_key=api_key or os.environ.get('ANTHROPIC_API_KEY'),
+                                default_headers=headers)
         self.model, self.max_tokens = model, max_tokens
         self.tokens_in = self.tokens_out = 0
 
@@ -132,3 +137,61 @@ class MockProposer:
         s = self.SCRIPT[self.i]
         self.tokens_in += 1200; self.tokens_out += 400
         return Proposal(s['hypothesis'], s['code'], '<mock>')
+
+
+class OpenAICompatibleProposer:
+    """Any OpenAI-shaped /chat/completions endpoint.
+
+    Covers Volcengine Ark (Doubao), OpenRouter, DeepSeek, OpenAI, Azure, and a local
+    Ollama server - which is also how Trae Agent talks to most providers, so a key that
+    works in Trae works here.  Kept deliberately dependency-light (httpx ships with the
+    anthropic package) so no extra install is needed.
+
+    base_url examples
+        Volcengine Ark : https://ark.cn-beijing.volces.com/api/v3
+        OpenRouter     : https://openrouter.ai/api/v1
+        DeepSeek       : https://api.deepseek.com/v1
+        Ollama (local) : http://localhost:11434/v1        (api_key can be anything)
+    """
+
+    def __init__(self, base_url, model, api_key=None, max_tokens=4000, timeout=180,
+                 temperature=0.6):
+        import httpx
+        self.url = base_url.rstrip('/') + '/chat/completions'
+        self.model, self.max_tokens, self.temperature = model, max_tokens, temperature
+        self.key = api_key or os.environ.get('LLM_API_KEY', 'none')
+        self.client = httpx.Client(timeout=timeout)
+        self.tokens_in = self.tokens_out = 0
+
+    def propose(self, digest, ledger_summary, budget, last_failure=None):
+        user = {'current_diagnostics': digest, 'history': ledger_summary, 'budget': budget}
+        if last_failure:
+            user['previous_attempt_failed'] = last_failure
+        body = {'model': self.model, 'max_tokens': self.max_tokens,
+                'temperature': self.temperature,
+                'messages': [{'role': 'system', 'content': SYSTEM},
+                             {'role': 'user', 'content': json.dumps(user, default=float)}]}
+        r = self.client.post(self.url, json=body,
+                             headers={'Authorization': f'Bearer {self.key}',
+                                      'Content-Type': 'application/json'})
+        r.raise_for_status()
+        j = r.json()
+        u = j.get('usage') or {}
+        self.tokens_in += u.get('prompt_tokens', 0)
+        self.tokens_out += u.get('completion_tokens', 0)
+        text = j['choices'][0]['message']['content']
+        d = _extract_json(text)
+        return Proposal(d['hypothesis'], d['code'], text)
+
+
+def make_proposer(spec):
+    """spec: 'mock' | 'pool' | 'anthropic:<model>' | '<base_url>|<model>'"""
+    if spec == 'mock':
+        return MockProposer()
+    if spec == 'pool':
+        from kairos.agent.proposer_pool import PoolProposer
+        return PoolProposer()
+    if spec.startswith('anthropic:'):
+        return AnthropicProposer(model=spec.split(':', 1)[1])
+    base, model = spec.split('|', 1)
+    return OpenAICompatibleProposer(base, model)
