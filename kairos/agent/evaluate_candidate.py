@@ -1,0 +1,64 @@
+"""Train + score one candidate feature matrix. Runs as its own process.
+
+Isolated for two reasons: lightgbm and torch each bundle their own libomp and abort if
+loaded together, and a candidate that hangs or segfaults must cost one iteration rather
+than the run.
+
+Multi-seed by default.  Per-seed std is 0.0008 while the competition's convergence rule
+needs +0.002 to be detected, so a single seed cannot reliably resolve the very improvement
+the rules demand; 3 seeds put the standard error at 0.00046.
+"""
+import sys, json
+import numpy as np
+sys.path.insert(0, '.')
+from kairos.kernel.dataset import Data
+from kairos.kernel.frozenfeat import within_user_deviation
+from kairos.kernel.fastmetrics import fast_evaluate, factorize
+import lightgbm as lgb
+
+PARAMS = dict(objective='binary', metric='auc', learning_rate=0.05, num_leaves=63,
+              min_data_in_leaf=200, feature_fraction=0.8, bagging_fraction=0.8,
+              bagging_freq=1, verbose=-1, num_threads=8)
+
+
+def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None):
+    d = Data(); fold = d.fold(fold_name)
+    tr, va = fold.idx['train'], fold.idx['valid']
+    ytr, yva = d.y_raw[tr], d.y_raw[va]
+    gva, _ = factorize(d.user_id[va])
+    names = [f'f{i}' for i in range(X.shape[1])]
+    if add_dev:
+        dtr, _ = within_user_deviation(X, names, d.user_id, tr, window_id=hz)
+        dva, _ = within_user_deviation(X, names, d.user_id, va, window_id=hz)
+        Xtr = np.concatenate([X[tr], dtr], 1); Xva = np.concatenate([X[va], dva], 1)
+    else:
+        Xtr, Xva = X[tr], X[va]
+    out = []
+    for sd in seeds:
+        p = dict(PARAMS, seed=sd)
+        box = {'primary': -1}
+        def cbe(env):
+            if env.iteration % 20 and env.iteration != env.end_iteration - 1:
+                return
+            m = fast_evaluate(gva, yva, env.model.predict(Xva, num_iteration=env.iteration+1))
+            if m['primary'] > box['primary']:
+                box.update(m); box['iter'] = env.iteration + 1
+        ds = lgb.Dataset(Xtr, label=ytr)
+        lgb.train(p, ds, num_boost_round=rounds, valid_sets=[ds],
+                  callbacks=[cbe, lgb.log_evaluation(0)])
+        out.append(box)
+    prim = [o['primary'] for o in out]
+    return {'valid_primary': float(np.mean(prim)), 'valid_std': float(np.std(prim)),
+            'valid_gauc': float(np.mean([o['GAUC'] for o in out])),
+            'valid_ndcg': float(np.mean([o['nDCG@5'] for o in out])),
+            'seeds': prim, 'best_iter': int(np.median([o['iter'] for o in out]))}
+
+
+if __name__ == '__main__':
+    cfg = json.load(open(sys.argv[1]))
+    X = np.load(cfg['X_path'])
+    hz = np.load(cfg['hz_path']) if cfg.get('hz_path') else None
+    r = evaluate(X, cfg.get('fold', 'official'), tuple(cfg.get('seeds', (0, 1, 2))),
+                 cfg.get('rounds', 300), cfg.get('add_dev', True), hz)
+    json.dump(r, open(cfg['out'], 'w'))
+    print('OK')
