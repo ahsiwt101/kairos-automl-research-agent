@@ -1,0 +1,12 @@
+# dataset (194MB, downloaded from zenodo - see README)
+KuaiRand-Pure/
+KuaiRand-Pure.tar.gz
+
+# environment
+.venv/
+__pycache__/
+*.pyc
+
+# large intermediates; experiment results (json/jsonl/log) are tracked
+runs/cache/
+runs/*.npy
