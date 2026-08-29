@@ -28,7 +28,8 @@ from kairos.kernel.frozenfeat import OFFICIAL_WINDOWS
 class Kairos:
     def __init__(self, proposer, fold_name='official', workdir='runs/kairos',
                  eps=0.002, stall_limit=3, max_iters=50, max_seconds=6 * 3600,
-                 seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True):
+                 seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True,
+                 max_tokens_total=400_000):
         self.proposer = proposer
         self.fold_name = fold_name
         self.workdir = workdir
@@ -38,6 +39,10 @@ class Kairos:
         # audit_enabled=False reproduces a conventional agent: write code, train, follow
         # the validation number.  It is the control arm for the ablation, not a fallback.
         self.audit_enabled = audit_enabled
+        # Hard spend guard.  The run is expected to use ~30k tokens; this ceiling exists so
+        # a pathological repair loop cannot quietly run up a bill, and it is reported in the
+        # ledger either way because token usage is a scored criterion.
+        self.max_tokens_total = max_tokens_total
         self.python = python or sys.executable
         os.makedirs(workdir, exist_ok=True)
         self.data = Data()
@@ -116,6 +121,12 @@ class Kairos:
     def run(self, verbose=True):
         n = 0
         while True:
+            spent = self.proposer.tokens_in + self.proposer.tokens_out
+            if spent >= self.max_tokens_total:
+                if verbose:
+                    print(f"\nSTOPPED: token budget exhausted ({spent:,} >= "
+                          f"{self.max_tokens_total:,})")
+                break
             done, why = self.ledger.converged(self.eps, self.stall_limit,
                                               self.max_iters, self.max_seconds)
             if done:
