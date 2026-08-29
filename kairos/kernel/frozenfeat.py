@@ -153,3 +153,48 @@ def within_user_deviation(X, names, user_id, split_idx, window_id=None):
         mean = np.bincount(seg, weights=vv) / sizes
         dev[order, c] = (vv - mean[seg]).astype(np.float32)
     return dev, [f'dev_{n}' for n in names]
+
+
+def windows_for_fold(spec, n_train_chunks=5):
+    """Build the frozen-window schedule for an arbitrary fold.
+
+    Same rule everywhere: a row may use labels only up to the start of the window it
+    belongs to.  Training is cut into chunks so that training rows carry a staleness
+    profile resembling the one they will be served under, instead of always seeing history
+    right up to themselves.
+    """
+    (tlo, thi), (vlo, vhi), (slo, shi) = spec['train'], spec['valid'], spec['test']
+    days = sorted({int(x) for x in _daterange(tlo, thi)})
+    if not days:
+        return [(vlo, vhi, tlo - 1), (slo, shi, vhi)]
+    chunks = np.array_split(np.array(days), min(n_train_chunks, len(days)))
+    wins = []
+    for i, ch in enumerate(chunks):
+        lo, hi = int(ch[0]), int(ch[-1])
+        hz = int(chunks[i - 1][-1]) if i > 0 else lo - 1
+        wins.append((lo, hi, hz))
+    wins.append((vlo, vhi, thi))     # validation frozen at end of train
+    wins.append((slo, shi, vhi))     # test frozen at end of validation
+    return wins
+
+
+def _daterange(lo, hi):
+    """Enumerate yyyymmdd values between lo and hi (April-May 2022 only)."""
+    out = []
+    y, m, dd = lo // 10000, (lo // 100) % 100, lo % 100
+    days_in = {4: 30, 5: 31}
+    cur = (m, dd)
+    while True:
+        v = y * 10000 + cur[0] * 100 + cur[1]
+        if v > hi:
+            break
+        if v >= lo:
+            out.append(v)
+        nd = cur[1] + 1
+        if nd > days_in.get(cur[0], 31):
+            cur = (cur[0] + 1, 1)
+        else:
+            cur = (cur[0], nd)
+        if cur[0] > 12:
+            break
+    return out
