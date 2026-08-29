@@ -125,6 +125,31 @@ score cost only materialises when the pool contains candidates whose true scores
 which happens once the objective axis is included, since lambdarank over per-day groups is
 where the leak turns destructive (test 0.5749) rather than merely misleading.
 
+## 6b. The leak inverts the ranking of design choices
+
+This is the sharpest consequence, and it is worse than losing points. On the official fold,
+over a pool that varies features *and* objective:
+
+| pipeline | valid | test |
+|---|---|---|
+| causal features + LambdaRank | **0.7330** (best on validation) | **0.5790** (worst on test) |
+| causal features + binary | 0.7170 | 0.5916 |
+| frozen features + binary | 0.5987 | 0.5910 |
+| frozen features + LambdaRank | 0.5973 | **0.5921** (best on test) |
+
+With leaky features, LambdaRank looks like the strongest idea in the pool and is in fact
+the weakest. With honest features, LambdaRank genuinely *is* the strongest. So a greedy
+agent does not merely pick a worse candidate — it draws the **opposite conclusion about
+its own objective**, and carries that wrong lesson into every subsequent iteration.
+
+Greedy argmax-validation obtains 0.5790 where 0.5921 was available: a regret of **0.0131**,
+and a submission 0.0156 *below* the baseline it set out to beat.
+
+Note also that this reverses our own earlier finding (§4) that objective choice does not
+matter. It does not matter for the ID-embedding FM on the baseline feature set; it matters
+once behavioural features are present, and its sign depends on whether those features are
+constructed honestly.
+
 ## 7. What actually improved the score
 
 | | valid | test | vs baseline |
