@@ -28,13 +28,16 @@ from kairos.kernel.frozenfeat import OFFICIAL_WINDOWS
 class Kairos:
     def __init__(self, proposer, fold_name='official', workdir='runs/kairos',
                  eps=0.002, stall_limit=3, max_iters=50, max_seconds=6 * 3600,
-                 seeds=(0, 1, 2), repair_attempts=2, python=None):
+                 seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True):
         self.proposer = proposer
         self.fold_name = fold_name
         self.workdir = workdir
         self.eps, self.stall_limit = eps, stall_limit
         self.max_iters, self.max_seconds = max_iters, max_seconds
         self.seeds, self.repair_attempts = seeds, repair_attempts
+        # audit_enabled=False reproduces a conventional agent: write code, train, follow
+        # the validation number.  It is the control arm for the ablation, not a fallback.
+        self.audit_enabled = audit_enabled
         self.python = python or sys.executable
         os.makedirs(workdir, exist_ok=True)
         self.data = Data()
@@ -95,7 +98,8 @@ class Kairos:
                 continue
 
             X = np.load(res['X_path'])
-            findings = self.auditor.run(X=X, names=res['names'], hz=self.hz)
+            findings = (self.auditor.run(X=X, names=res['names'], hz=self.hz)
+                        if self.audit_enabled else [])
             if Auditor.blocked(findings):
                 detail = '; '.join(f.detail for f in findings if f.severity == 'BLOCK')
                 last_failure = {'stage': 'audit', 'error': detail,

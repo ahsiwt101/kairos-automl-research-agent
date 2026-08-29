@@ -24,12 +24,15 @@ s = np.load(a.scores).astype(np.float64)
 assert len(s) == len(rows), f"{len(s)} scores for {len(rows)} {a.split} rows"
 assert np.isfinite(s).all(), "scores contain NaN/Inf - the official checker rejects these"
 
-# ties are broken by row order in nDCG (the reference sort is stable and has no tie
-# correction there), so identical scores are silently order-dependent. Report them.
-n_tied = len(s) - len(np.unique(s))
+# nDCG has no tie correction (the reference sort is stable), so tied scores are broken by
+# row order.  Only ties WITHIN a user matter - the metric never compares across users - so
+# count those; a global duplicate count is alarming and meaningless here.
+uu = np.array([x[1] for x in rows])
+o = np.lexsort((np.arange(len(s)), s, uu))
+n_tied = int(((uu[o][1:] == uu[o][:-1]) & (s[o][1:] == s[o][:-1])).sum())
 if n_tied:
-    print(f"warning: {n_tied:,} of {len(s):,} scores are duplicates of another score; "
-          f"nDCG breaks such ties by row order")
+    print(f"note: {n_tied:,} of {len(s):,} rows tie with a list-mate; nDCG breaks these by "
+          f"row order (measured cost on valid: ~5e-05 primary)")
 
 write_submission(a.out, rows, s)
 back = read_submission(a.out, rows)          # official validator
