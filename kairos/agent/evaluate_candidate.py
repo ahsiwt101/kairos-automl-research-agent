@@ -21,7 +21,8 @@ PARAMS = dict(objective='binary', metric='auc', learning_rate=0.05, num_leaves=6
               bagging_freq=1, verbose=-1, num_threads=8)
 
 
-def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None):
+def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
+             train_cfg=None):
     d = Data(); fold = d.fold(fold_name)
     tr, va = fold.idx['train'], fold.idx['valid']
     ytr, yva = d.y_raw[tr], d.y_raw[va]
@@ -33,9 +34,22 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None):
         Xtr = np.concatenate([X[tr], dtr], 1); Xva = np.concatenate([X[va], dva], 1)
     else:
         Xtr, Xva = X[tr], X[va]
+    cfg = train_cfg or {}
+    obj = cfg.get('objective', 'binary')
+    grp = cfg.get('group', 'user_day')
+    if obj == 'lambdarank':
+        g = d.user_id[tr].astype(np.int64)
+        if grp == 'user_day':
+            g = g * 100000 + d.date[tr] % 100000
+        gorder = np.argsort(g, kind='stable'); gs = g[gorder]
+        gsizes = np.diff(np.r_[np.flatnonzero(np.r_[True, gs[1:] != gs[:-1]]), len(gs)])
     out = []
     for sd in seeds:
         p = dict(PARAMS, seed=sd)
+        if obj == 'lambdarank':
+            p.pop('metric', None)
+            p.update(objective='lambdarank', metric='ndcg', ndcg_eval_at=[5],
+                     lambdarank_truncation_level=15)
         box = {'primary': -1}
         def cbe(env):
             if env.iteration % 20 and env.iteration != env.end_iteration - 1:
@@ -43,12 +57,14 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None):
             m = fast_evaluate(gva, yva, env.model.predict(Xva, num_iteration=env.iteration+1))
             if m['primary'] > box['primary']:
                 box.update(m); box['iter'] = env.iteration + 1
-        ds = lgb.Dataset(Xtr, label=ytr)
+        ds = (lgb.Dataset(Xtr[gorder], label=ytr[gorder], group=gsizes)
+              if obj == 'lambdarank' else lgb.Dataset(Xtr, label=ytr))
         lgb.train(p, ds, num_boost_round=rounds, valid_sets=[ds],
                   callbacks=[cbe, lgb.log_evaluation(0)])
         out.append(box)
     prim = [o['primary'] for o in out]
-    return {'valid_primary': float(np.mean(prim)), 'valid_std': float(np.std(prim)),
+    return {'objective': obj,
+            'valid_primary': float(np.mean(prim)), 'valid_std': float(np.std(prim)),
             'valid_gauc': float(np.mean([o['GAUC'] for o in out])),
             'valid_ndcg': float(np.mean([o['nDCG@5'] for o in out])),
             'seeds': prim, 'best_iter': int(np.median([o['iter'] for o in out]))}
@@ -59,6 +75,7 @@ if __name__ == '__main__':
     X = np.load(cfg['X_path'])
     hz = np.load(cfg['hz_path']) if cfg.get('hz_path') else None
     r = evaluate(X, cfg.get('fold', 'official'), tuple(cfg.get('seeds', (0, 1, 2))),
-                 cfg.get('rounds', 300), cfg.get('add_dev', True), hz)
+                 cfg.get('rounds', 300), cfg.get('add_dev', True), hz,
+                 cfg.get('train_cfg'))
     json.dump(r, open(cfg['out'], 'w'))
     print('OK')

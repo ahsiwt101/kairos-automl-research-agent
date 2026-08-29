@@ -64,8 +64,9 @@ class Kairos:
                          if self.stall_limit - stall <= 1 else 'exploration affordable')}
 
     # ------------------------------------------------------------------ evaluation
-    def _evaluate(self, X_path):
+    def _evaluate(self, X_path, train_cfg=None):
         cfg = {'X_path': os.path.abspath(X_path), 'fold': self.fold_name,
+               'train_cfg': train_cfg or {},
                'seeds': list(self.seeds), 'add_dev': True,
                'hz_path': os.path.abspath(os.path.join(self.workdir, 'hz.npy')),
                'out': os.path.abspath(os.path.join(self.workdir, 'eval.json'))}
@@ -139,7 +140,7 @@ class Kairos:
 
             self.ledger.tokens_in = self.proposer.tokens_in
             self.ledger.tokens_out = self.proposer.tokens_out
-            ev, err = self._evaluate(res['X_path'])
+            ev, err = self._evaluate(res['X_path'], res.get('train_cfg'))
             if ev is None:
                 self.ledger.log_error(n, 'train', err, 'candidate discarded, run continues')
                 self.ledger.add(Entry(iteration=n, hypothesis=hyp, action_kind='patch',

@@ -6,14 +6,14 @@ one of them getting luckier suggestions.
 """
 import textwrap
 from kairos.agent.proposer import Proposal
-from kairos.kernel.candidates import POOL
+from kairos.kernel.candidates import POOL, POOL_V2
 
 TEMPLATE = '''
 import numpy as np
 def build(ctx):
     from kairos.kernel.candidates import build_candidate_matrix
     X, names, hz = build_candidate_matrix(ctx.data, ctx.fold.spec, {mode!r}, {fams!r})
-    return X, names
+    return X, names, {cfg!r}
 '''
 
 HYP = {
@@ -34,8 +34,11 @@ HYP = {
 
 
 class PoolProposer:
-    def __init__(self, order=None):
-        self.pool = [p for p in POOL if p[0] in order] if order else list(POOL)
+    def __init__(self, order=None, pool=None):
+        src = pool if pool is not None else POOL_V2
+        src = [(p[0], p[1], p[2], p[3] if len(p) > 3 else 'binary',
+                p[4] if len(p) > 4 else None) for p in src]
+        self.pool = [p for p in src if p[0] in order] if order else list(src)
         if order:
             self.pool.sort(key=lambda p: order.index(p[0]))
         self.i = -1
@@ -45,7 +48,13 @@ class PoolProposer:
         self.i += 1
         if self.i >= len(self.pool):
             self.i = len(self.pool) - 1
-        name, mode, fams = self.pool[self.i]
+        name, mode, fams, obj, grp = self.pool[self.i]
         self.tokens_in += 1400; self.tokens_out += 500
         h = dict(HYP[mode]); h['statement'] = f"[{name}] " + h['statement']
-        return Proposal(h, TEMPLATE.format(mode=mode, fams=tuple(fams)).strip(), '<pool>')
+        if obj == 'lambdarank':
+            h['statement'] += ", optimised with LambdaRank over per-day lists"
+            h['mechanism'] += "; the metric is a ranking metric, so a ranking objective "\
+                              "should align the loss with what is scored"
+        cfg = {'objective': obj, 'group': grp or 'user_day'}
+        return Proposal(h, TEMPLATE.format(mode=mode, fams=tuple(fams), cfg=cfg).strip(),
+                        '<pool>')

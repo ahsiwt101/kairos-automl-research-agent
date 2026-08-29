@@ -60,7 +60,8 @@ def static_check(src):
 CANDIDATE_CONTRACT = '''
 # A candidate module must define exactly this function:
 #
-#   def build(ctx):
+#   def build(ctx):        # may return (X, names) or (X, names, train_cfg)
+#       # train_cfg keys: objective ('binary'|'lambdarank'), group ('user_day'|'user')
 #       """ctx exposes:
 #            ctx.data            columnar log (user_id, video_id, date, time_ms, tab, ...)
 #            ctx.fold            train/valid indices; TEST LABELS ARE NOT REACHABLE
@@ -84,7 +85,12 @@ def main():
     from kairos.agent.context import make_context
     ctx = make_context({fold!r})
     t0 = time.time()
-    X, names = m.build(ctx)
+    built = m.build(ctx)
+    cfg = {{}}
+    if len(built) == 3:
+        X, names, cfg = built
+    else:
+        X, names = built
     X = np.asarray(X, dtype=np.float32)
     assert X.ndim == 2, f"build() must return a 2-D matrix, got shape {{X.shape}}"
     assert X.shape[0] == ctx.data.n, (
@@ -94,8 +100,8 @@ def main():
         f"{{len(names)}} names for {{X.shape[1]}} columns")
     assert np.isfinite(X).all(), "feature matrix contains NaN or Inf"
     np.save({out!r}, X)
-    json.dump({{'names': list(names), 'seconds': round(time.time()-t0,1)}},
-              open({meta!r}, 'w'))
+    json.dump({{'names': list(names), 'seconds': round(time.time()-t0,1),
+               'train_cfg': dict(cfg or {{}})}}, open({meta!r}, 'w'))
     print("OK")
 try:
     main()
@@ -143,4 +149,5 @@ def run_candidate(src, fold_name='official', timeout=900, workdir='runs/sandbox'
                 'hint': 'fix the exception; the contract is in CANDIDATE_CONTRACT'}
     info = json.load(open(meta))
     return {'ok': True, 'X_path': out, 'names': info['names'],
+            'train_cfg': info.get('train_cfg', {}),
             'seconds': round(time.time() - t0, 1)}
