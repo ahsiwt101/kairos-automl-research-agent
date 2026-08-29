@@ -46,15 +46,25 @@ def build_frozen_matrix(data, windows=OFFICIAL_WINDOWS, alpha=20.0, with_cf=True
     durb = np.searchsorted(edges, dur).astype(np.int64)
     uid = d.user_id.astype(np.int64)
 
+    def pair(a, b):
+        """Collision-proof composite key.
+
+        Arithmetic packing (uid * 1e7 + author) silently collides once a component exceeds
+        its assumed range - author_id already reaches 8.73e6 against a 1e7 budget on
+        KuaiRand-Pure, and the larger variants will blow through it with no error, just
+        wrong features.  Factorising the pair costs one sort and cannot collide.
+        """
+        return np.unique(np.stack([a, b], 1), axis=0, return_inverse=True)[1].astype(np.int64)
+
     fams = {
         'item':        v.astype(np.int64),
         'author':      author,
         'user':        uid,
-        'user_author': uid * 10_000_000 + author,
-        'user_item':   uid * 100_000 + v.astype(np.int64),
-        'user_tab':    uid * 100 + tab,
-        'user_dur':    uid * 100 + durb,
-        'item_tab':    v.astype(np.int64) * 100 + tab,
+        'user_author': pair(uid, author),
+        'user_item':   pair(uid, v.astype(np.int64)),
+        'user_tab':    pair(uid, tab),
+        'user_dur':    pair(uid, durb),
+        'item_tab':    pair(v.astype(np.int64), tab),
     }
     cols, names = [], []
     for fam, keys in fams.items():
