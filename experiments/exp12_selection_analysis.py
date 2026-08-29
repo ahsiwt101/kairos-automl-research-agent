@@ -10,7 +10,9 @@ import sys, json, math; sys.path.insert(0,'.')
 import numpy as np
 from kairos.agent.selection import selection_bias
 
-res = json.load(open('runs/exp11_selection.json'))
+PATH = sys.argv[1] if len(sys.argv) > 1 else 'runs/exp11_selection.json'
+res = json.load(open(PATH))
+print(f"pool: {PATH}\n")
 BACKTESTS = [f for f in next(iter(res.values())) if f.startswith('backtest')]
 names = list(res)
 
@@ -34,11 +36,11 @@ for x in rows:
     sigma = max(x['seed_std'], 0.0008)
     x['robust'] = x['transfer'] - 1.0*x['stability'] - selection_bias(n_c, sigma)
 
-print(f"{'candidate':<15} {'off.valid':>10} {'off.test':>9} {'gap':>8} "
+print(f"{'candidate':<18} {'off.valid':>10} {'off.test':>9} {'gap':>8} "
       f"{'transfer':>9} {'stab':>7} {'robust':>8}")
 print("-"*72)
 for x in sorted(rows, key=lambda z: -z['official_valid']):
-    print(f"{x['name']:<15} {x['official_valid']:>10.4f} {x['official_test']:>9.4f} "
+    print(f"{x['name']:<18} {x['official_valid']:>10.4f} {x['official_test']:>9.4f} "
           f"{x['gap']:>+8.4f} {x['transfer']:>9.4f} {x['stability']:>7.4f} "
           f"{x['robust']:>8.4f}")
 
@@ -57,7 +59,7 @@ for key, label in (('official_valid','greedy (argmax validation)'),
                    ('robust','robust (transfer-corrected)'),
                    ('official_test','oracle (unattainable)')):
     g = grade(key, label); out.append(g)
-    print(f"{g['rule']:<26} {g['picked']:<15} {g['test_obtained']:>21.4f} "
+    print(f"{g['rule']:<26} {g['picked']:<18} {g['test_obtained']:>21.4f} "
           f"{g['regret']:>9.4f}")
 
 print(f"\nbaseline FM hidden test: 0.5946")
@@ -75,5 +77,5 @@ def sp(a,b):
 print(f"\nrank correlation with hidden test over the pool:")
 print(f"  official validation : {sp(v,t):+.3f}")
 print(f"  backtest transfer   : {sp(tr_,t):+.3f}")
-json.dump({'rows':rows,'rules':out}, open('runs/exp12_selection_analysis.json','w'),
+json.dump({'rows':rows,'rules':out}, open(PATH.replace('.json','_graded.json'),'w'),
           indent=2, default=float)

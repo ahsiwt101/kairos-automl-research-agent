@@ -10,3 +10,8 @@ __pycache__/
 # large intermediates; experiment results (json/jsonl/log) are tracked
 runs/cache/
 runs/*.npy
+
+# never commit credentials
+*_env.sh
+.env
+*.key

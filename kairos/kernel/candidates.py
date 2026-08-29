@@ -62,6 +62,25 @@ def build_candidate_matrix(d, fold_spec, mode, families, alpha=20.0):
     return np.stack(cols, 1).astype(np.float32), names, hz
 
 
+# Entries are (name, mode, families, objective, train_group).
+# The objective axis is included deliberately.  A binary-objective pool shows the leak
+# inflating validation without changing the test score much, which makes selection look
+# harmless.  lambdarank over per-day groups is an entirely standard choice for a ranking
+# task, and it is where the leak turns destructive - so leaving it out would understate
+# the risk, not avoid bias.
+POOL_V2 = [
+    ('causal_all_bin',   'causal', FAMILIES,                    'binary',     None),
+    ('causal_ui_bin',    'causal', ('user','item','user_item','user_author'), 'binary', None),
+    ('causal_all_lmr',   'causal', FAMILIES,                    'lambdarank', 'user_day'),
+    ('causal_ui_lmr',    'causal', ('user','item','user_item','user_author'), 'lambdarank','user_day'),
+    ('causal_user_lmr',  'causal', ('user','item','user_tab'),  'lambdarank', 'user_day'),
+    ('frozen_all_bin',   'frozen', FAMILIES,                    'binary',     None),
+    ('frozen_ui_bin',    'frozen', ('user','item','user_item','user_author'), 'binary', None),
+    ('frozen_all_lmr',   'frozen', FAMILIES,                    'lambdarank', 'user_day'),
+    ('frozen_ui_lmr',    'frozen', ('user','item','user_item','user_author'), 'lambdarank','user_day'),
+    ('frozen_item_bin',  'frozen', ('item','author','item_tab'),'binary',     None),
+]
+
 POOL = [
     ('causal_all',      'causal', FAMILIES),
     ('causal_user',     'causal', ('user', 'item', 'user_tab')),
