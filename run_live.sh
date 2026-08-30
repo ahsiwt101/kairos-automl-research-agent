@@ -6,9 +6,12 @@ export PYTHONWARNINGS=ignore
 exec ./.venv/bin/python -u -c "
 import sys; sys.path.insert(0,'.')
 from kairos.agent.loop import Kairos
-from kairos.agent.proposer import AnthropicProposer
-k = Kairos(AnthropicProposer(model='claude-opus-5'), max_iters=10, seeds=(0,1),
-           workdir='runs/kairos_live', max_tokens_total=250000)
+from kairos.agent.proposer import TwoStageProposer
+p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
+k = Kairos(p, max_iters=10, seeds=(0,1), workdir='runs/kairos_live',
+           max_tokens_total=250000)
 s = k.run()
-import json; print('SUMMARY'); print(json.dumps(s, indent=2, default=str))
+import json
+s['tokens_by_model'] = p.by_model
+print('SUMMARY'); print(json.dumps(s, indent=2, default=str))
 "

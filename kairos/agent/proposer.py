@@ -27,6 +27,9 @@ WHAT IS ALREADY KNOWN (do not re-derive):
 - Within-user ranking is invariant to per-user constants: a feature that is constant
   across a user's evaluation list CANNOT change the metric.
 - The logging density collapses 5x mid-window; valid and test are both in the sparse regime.
+- Your candidate is trained by LightGBM on the matrix you return, so you cannot rediscover
+  the FM's ID crosses. `ctx.baseline_score` gives you them directly; a matrix WITHOUT it
+  will almost certainly score below the baseline and be rejected.
 
 YOU WRITE PYTHON. Define exactly one function `build(ctx)` returning (X, names) or
 (X, names, train_cfg). X must be float32 with EXACTLY ctx.data.n rows, aligned to all log
@@ -42,6 +45,10 @@ ctx.col(name)             any log column: 'tab','duration_ms','hourmin','play_ti
                           'is_click','is_like','is_follow','is_comment','is_forward'
 ctx.col(name,'vb')        video table: 'author_id','music_id','video_type','upload_type'
 ctx.col(name,'uf')        user table:  'user_active_degree','follow_user_num_range', ...
+ctx.baseline_score        float32 (n,) the official FM baseline's OUT-OF-SAMPLE score for
+                          each row (trained per window on data before it). This is the
+                          model you are trying to beat - include it as a feature and build
+                          on it rather than trying to rediscover it.
 ctx.fold.idx['train'|'valid']   row indices    ctx.fold.horizon   last date with labels
 ctx.OFFICIAL_WINDOWS            frozen-window schedule
 ctx.window_horizons(date, windows) -> per-row horizon
