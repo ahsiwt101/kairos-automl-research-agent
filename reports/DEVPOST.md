@@ -35,7 +35,15 @@ until the number has earned it.**
    within-user ranking is invariant to any quantity constant across a user's list, so a
    *user-level* statistic must have exactly zero within-user variance. Non-zero variance is
    a **proof** of label feedback. Under the naive construction that quantity is 1.24e-01;
-   under the fix it is 0.000e+00.
+   under the fix it is 0.000e+00. That check has a real blind spot, though, and a live run
+   found it: a candidate is free to hand-roll a leak over a user×item *cross* under any
+   column name, and a cross is *supposed* to vary within a user's list, so no name- or
+   shape-based check can see it. It got accepted (+0.0936 on validation) before we caught
+   it. The fix doesn't try to understand the candidate's code at all — any implausible
+   validation jump gets the same candidate re-run against a backtest fold with a genuinely
+   unsealed test split, checked on both the valid/test gap and the absolute score against
+   the best honest result ever measured there. Verified against the exact candidate that
+   slipped through, and against a known-honest one, in both directions.
 2. **Window-frozen features.** Every aggregate is frozen at the start of its evaluation
    window, the way a periodically-retrained production model actually sees the world. This
    collapses the validation→test gap from **+0.1409 to +0.0070**.
@@ -57,16 +65,43 @@ until the number has earned it.**
 
 ## Results
 
+Two different things, kept scrupulously separate, since this track is judged on autonomy:
+
+**The submission** (`submission.csv`) is a research pipeline we built by hand, using the
+same primitives the agent has — an ensemble of the FM baseline, a frozen-window GBDT, and
+a behavioural-feedback signal, rank-fused. It beats the baseline and defines the ceiling
+we know is reachable with this feature set.
+
 | | valid | test | vs baseline |
 |---|---|---|---|
 | Official FM baseline (reproduced exactly, 5 seeds) | 0.6016 | 0.5946 | — |
-| Greedy validation-following agent | 0.7330 | 0.5790 | **−0.0156** |
-| **KAIROS** | 0.6045 | **0.5976** | **+0.0030** |
+| Greedy validation-following agent (control arm) | 0.7330 | 0.5790 | **−0.0156** |
+| **Hand-built ensemble (submitted)** | 0.6045 | **0.5976** | **+0.0030** |
 
-The absolute gain is modest, and we are explicit about that: the scored improvement comes
-from ensembling and disciplined selection, not from a stronger model. Several
-well-motivated directions produced nothing measurable, and we report them all — objective
-alignment across six losses, recency weighting, watch-time regression, and the D2Q
+**The live agent** — Claude Opus 5 planning, Claude Sonnet 5 coding, zero manual
+intervention in any accept/reject decision — got close but did not cross the baseline
+within its allotted budget, and correctly retained the baseline rather than ship something
+short of it. Across a sequence of live runs (each independently governed by the
+competition's own N=3-without-+0.002 stopping rule), it: caught and self-corrected out of
+two structural API mistakes without help; got its own accepted candidate blocked by our
+temporal-validity auditor after that candidate slipped a leak neither of us had
+anticipated (a hand-rolled aggregate over a user×item cross, closed via a backtest
+confirmation gate added specifically because of this); and, once its action space was
+extended to let it blend separately-trained models (rather than concatenate everything
+into one feature matrix for a single tree — the architecture every earlier attempt lost
+with), independently rediscovered the FM + frozen-history rank-fusion recipe and closed
+the gap to baseline monotonically across three consecutive iterations (delta vs.
+incumbent: −0.0024 → −0.0017 → −0.0011) before stalling out under budget.
+
+We think that trajectory — reasoning correctly about *why* an architecture fails, adapting
+across constrained budgets, catching its own mistakes, and refusing to ship an unproven
+gain — is a more informative signal about the agent than the final number, on a benchmark
+where the honest headroom above the baseline is on the order of a few thousandths of
+primary in the first place.
+
+The absolute gain is modest, and we are explicit about that: several well-motivated
+directions produced nothing measurable, and we report them all — objective alignment
+across six losses, recency weighting, watch-time regression, and the D2Q
 duration-deconfounded target. On a benchmark where the noise floor (0.0008) sits under the
 decision threshold (0.002), knowing which of your gains are real *is* the hard part.
 

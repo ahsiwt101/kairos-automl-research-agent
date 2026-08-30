@@ -197,6 +197,75 @@ so we **declined it**. This is the same rule that governs everything else here: 
 a gain that is only visible in the place you have already shown you cannot trust. Had we
 taken it, we would have been doing precisely what §6 warns against.
 
+## 8c. The live agent, end to end
+
+Everything above was measured with scripted or hand-directed pipelines. The actual
+deliverable is autonomous: Claude Opus 5 plans, Claude Sonnet 5 codes, against the
+kernel described here, with zero manual intervention in any accept/reject decision.
+
+**A leak got through, and the fix generalises beyond this one shape.** One live run's
+accepted candidate hand-rolled its own streaming aggregate directly over `ctx.data.y_raw`/
+`time_ms` (never touching the flagged-dangerous `causal_prefix`), keyed on user x author /
+user x tag / user x duration. It scored +0.0936 on validation and was accepted - the
+existing structural check (`check_user_constancy`) only inspects columns *named*
+`user_rate`/`user_logn` and, even name-blind, cannot flag a cross feature, since a cross is
+*supposed* to vary within a user's list. The fix does not try to understand the
+candidate's code at all: any implausible validation jump gets the same candidate re-run
+against a backtest fold with a genuinely unsealed test split, checked on two independent
+signals - the valid/test **gap** (catches the earlier-characterised per-fold-horizon leak:
+`causal_all` on backtest_a, gap +0.124) and the **absolute level** against the best honest
+score ever measured on that fold (catches this leak specifically: it inflates valid *and*
+test roughly equally, gap only -0.0016, but +0.037 over the empirical ceiling - a leak that
+is blind to fold boundaries entirely evades a gap-only check). Verified both ways: the
+actual leaked candidate is rejected, a known-honest candidate is not.
+
+**The action space had to be extended to let the agent execute its own best idea.** Every
+early live attempt converged on the same losing architecture - concatenate
+`baseline_score`, `cf_score`, `auxiliary_signal`, `mf_factors` into one feature matrix for
+a single downstream tree - which the agent itself correctly diagnosed as the
+"tree-on-a-calibrated-score pathology" (a tree shatters a smooth continuous score into
+step functions) without ever finding a fix within that architecture. The harness could not
+express the winning alternative (train separate models, blend their *output ranks*) at
+all - `build(ctx)` only ever returned a feature matrix for the harness's own single GBDT.
+Adding `train_cfg={'mode': 'scores'}` - a candidate may return already-blended final
+scores, having trained and combined its own model(s) inside `build()` - unlocked it. This
+required closing a latent risk before it could be trusted: `baseline_score`/`auxiliary_signal`
+lazily import torch, and a scores-mode candidate is free to `import lightgbm`; the two
+crash if loaded into the same process (each bundles its own OpenMP runtime). Fixed by
+pre-computing every torch-backed primitive in the trusted parent process before any
+candidate runs, so a candidate's `ctx` access is always a cache read.
+
+**Cross-run memory mattered more than any single prompt change.** Each `Kairos` run starts
+a blank ledger, so across three clean runs the agent kept independently re-deriving and
+re-losing the same feature-concatenation idea, never once trying `mode='scores'` live
+despite it being documented as the winning strategy. Seeding the next run's first digest
+with a factual one-paragraph summary of what earlier runs tried and how it went - the way
+a lab notebook would - changed this immediately: iteration 1 of the next run opened with
+"switch architecture entirely: use train_cfg mode='scores'… this is the documented
+hand-win architecture that has never been run live."
+
+**Result.** Once unblocked, the agent independently rediscovered the FM + frozen-history
+model rank-fusion architecture - the exact recipe that won by hand - across three
+consecutive live iterations, closing the gap to the baseline monotonically each time
+(delta vs. incumbent: -0.0024, -0.0017, -0.0011) before correctly stalling out at the
+competition's own N=3 rule. It never crossed 0.6016 on validation within that budget, so
+per the harness's own discipline (never ship what does not beat the incumbent) it retained
+the FM baseline rather than accept a candidate that was still short. `submission.csv` is
+unaffected by any of this - it was last written from the hand-built ensemble and no
+live-agent candidate ever beat the incumbent it would need to beat to replace it.
+
+**Two real bugs the live runs caught in the harness itself**, beyond the leak above:
+- `Ledger.stall_counter` seeded its "best score" tracker at -inf instead of the actual
+  incumbent, letting a run earn false progress credit for beating its own early bad
+  guesses - it would have continued well past where the stated rule should have ended it.
+  Fixed and pinned with a regression test; the already-published control-arm ablation
+  (§6) was re-run under the correction (conclusion unchanged, iteration count corrected).
+- An invalid `train_cfg.hparams` key raised inside the *scoring* subprocess, which has no
+  repair loop wired to it, silently discarding an entire iteration - including a `build()`
+  that had run correctly - over what should have been a one-line, repairable fix (the
+  coder used `n_estimators`, an XGBoost/sklearn name, not LightGBM's). Moved the
+  validation into the same subprocess and retry loop as the candidate's own code.
+
 ## 9. Open, and honestly untried by us
 
 Sequence modelling (DIN/SIM-style target attention over user history) is the largest
