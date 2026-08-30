@@ -17,7 +17,7 @@ They are reachable only through auxiliary_signal(), which time-gates them exactl
 frozen_prefix does for the scored label.
 """
 import numpy as np
-from kairos.kernel.dataset import Data
+from kairos.kernel.dataset import Data, FOLDS
 from kairos.kernel import causal, frozenfeat
 
 # Pre-exposure: known before the item is served, safe as a same-row feature.
@@ -31,13 +31,23 @@ _OUTCOME_COLUMNS = {'is_click', 'is_like', 'is_follow', 'is_comment', 'is_forwar
 
 class Context:
     def __init__(self, fold_name='official'):
+        self.fold_name = fold_name
         self.data = Data()
         self.fold = self.data.fold(fold_name)
         self.causal_prefix = causal.causal_prefix
         self.frozen_prefix = causal.frozen_prefix
         self.window_horizons = causal.window_horizons
         self.smoothed_rate = causal.smoothed_rate
-        self.OFFICIAL_WINDOWS = frozenfeat.OFFICIAL_WINDOWS
+        # This fold's OWN window schedule - NOT always the official one. The name
+        # OFFICIAL_WINDOWS is kept for backward compatibility with earlier documented
+        # usage; it is aliased to self.windows, which is correct for whichever fold this
+        # Context was built for. Getting this wrong would matter a lot: baseline_score /
+        # mf_factors / cf_score / auxiliary_signal below all derive from it, and if they
+        # silently used the OFFICIAL schedule while running against a backtest fold, they
+        # would train on more recent data than that fold's own protocol allows - exactly
+        # the kind of fold-contamination bug that would corrupt a backtest confirmation.
+        self.windows = frozenfeat.windows_for_fold(FOLDS[fold_name])
+        self.OFFICIAL_WINDOWS = self.windows
         self.within_user_deviation = frozenfeat.within_user_deviation
         self._fm = None
         self._mf = {}
@@ -138,7 +148,8 @@ class Context:
         as a feature to build on rather than trying to rediscover it."""
         if self._fm is None:
             from kairos.kernel.baseline_signal import build_fm_signal
-            self._fm = build_fm_signal(self.data, self.OFFICIAL_WINDOWS)
+            self._fm = build_fm_signal(self.data, self.windows,
+                                       cache=f'runs/fm_signal_{self.fold_name}.npy')
         return self._fm
 
     def mf_factors(self, dim=16):
@@ -158,7 +169,9 @@ class Context:
         """
         if dim not in self._mf:
             from kairos.kernel.mf_signal import build_mf_factors
-            self._mf[dim] = build_mf_factors(self.data, self.OFFICIAL_WINDOWS, dim=dim)
+            self._mf[dim] = build_mf_factors(
+                self.data, self.windows, dim=dim,
+                cache_dir=f'runs/mf_cache_{self.fold_name}')
         return self._mf[dim]
 
     def auxiliary_signal(self, name):
@@ -172,7 +185,9 @@ class Context:
         """
         if name not in self._aux:
             from kairos.kernel.baseline_signal import build_auxiliary_signal
-            self._aux[name] = build_auxiliary_signal(self.data, self.OFFICIAL_WINDOWS, name)
+            self._aux[name] = build_auxiliary_signal(
+                self.data, self.windows, name,
+                cache_dir=f'runs/aux_cache_{self.fold_name}')
         return self._aux[name]
 
     def cf_score(self):
@@ -191,7 +206,8 @@ class Context:
         """
         if self._cf is None:
             from kairos.kernel.cf_signal import build_cf_score
-            self._cf = build_cf_score(self.data, self.OFFICIAL_WINDOWS)
+            self._cf = build_cf_score(self.data, self.windows,
+                                      cache_dir=f'runs/cf_cache_{self.fold_name}')
         return self._cf
 
     def labels_visible(self):

@@ -23,11 +23,21 @@ from kairos.agent.traincfg import sanitize as _sanitize_hparams
 
 
 def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
-             train_cfg=None):
+             train_cfg=None, also_test=False):
+    """also_test=True additionally scores the fold's own TEST split and returns
+    'test_primary'. Only legal on backtest_* folds, which are not sealed - this must never
+    become a path to the official fold's hidden test, so it is refused otherwise."""
+    if also_test and not fold_name.startswith('backtest'):
+        raise ValueError(f"also_test is only permitted on backtest_* folds, got "
+                         f"'{fold_name}' - this guard exists so backtest confirmation can "
+                         f"never become an extra route to the official hidden test")
     d = Data(); fold = d.fold(fold_name)
     tr, va = fold.idx['train'], fold.idx['valid']
     ytr, yva = d.y_raw[tr], d.y_raw[va]
     gva, _ = factorize(d.user_id[va])
+    if also_test:
+        te = fold.idx['test']
+        gte, _ = factorize(d.user_id[te])
 
     cfg = train_cfg or {}
     if cfg.get('mode') == 'scores':
@@ -38,9 +48,12 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
         # baseline: LightGBM shatters a smooth continuous score into step functions).
         s = np.asarray(X, dtype=np.float64).reshape(-1)
         m = fast_evaluate(gva, yva, s[va])
-        return {'objective': 'scores', 'valid_primary': m['primary'],
-                'valid_std': 0.0, 'valid_gauc': m['GAUC'], 'valid_ndcg': m['nDCG@5'],
-                'seeds': [m['primary']], 'best_iter': None}
+        out = {'objective': 'scores', 'valid_primary': m['primary'],
+              'valid_std': 0.0, 'valid_gauc': m['GAUC'], 'valid_ndcg': m['nDCG@5'],
+              'seeds': [m['primary']], 'best_iter': None}
+        if also_test:
+            out['test_primary'] = fast_evaluate(gte, d.y_raw[te], s[te])['primary']
+        return out
 
     names = [f'f{i}' for i in range(X.shape[1])]
     if add_dev:
@@ -79,11 +92,32 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
                   callbacks=[cbe, lgb.log_evaluation(0)])
         out.append(box)
     prim = [o['primary'] for o in out]
-    return {'objective': obj,
-            'valid_primary': float(np.mean(prim)), 'valid_std': float(np.std(prim)),
-            'valid_gauc': float(np.mean([o['GAUC'] for o in out])),
-            'valid_ndcg': float(np.mean([o['nDCG@5'] for o in out])),
-            'seeds': prim, 'best_iter': int(np.median([o['iter'] for o in out]))}
+    result = {'objective': obj,
+             'valid_primary': float(np.mean(prim)), 'valid_std': float(np.std(prim)),
+             'valid_gauc': float(np.mean([o['GAUC'] for o in out])),
+             'valid_ndcg': float(np.mean([o['nDCG@5'] for o in out])),
+             'seeds': prim, 'best_iter': int(np.median([o['iter'] for o in out]))}
+    if also_test:
+        best_iter = result['best_iter']
+        test_scores = []
+        for sd in seeds:
+            p = dict(PARAMS, **hparams, seed=sd)
+            if obj == 'lambdarank':
+                p.pop('metric', None)
+                p.update(objective='lambdarank', metric='ndcg', ndcg_eval_at=[5],
+                         lambdarank_truncation_level=15)
+            ds = (lgb.Dataset(Xtr[gorder], label=ytr[gorder], group=gsizes)
+                  if obj == 'lambdarank' else lgb.Dataset(Xtr, label=ytr))
+            b = lgb.train(p, ds, num_boost_round=best_iter)
+            Xte = X[fold.idx['test']]
+            if add_dev:
+                dte, _ = within_user_deviation(X, names, d.user_id, fold.idx['test'],
+                                               window_id=hz)
+                Xte = np.concatenate([Xte, dte], 1)
+            test_scores.append(fast_evaluate(gte, d.y_raw[fold.idx['test']],
+                                             b.predict(Xte))['primary'])
+        result['test_primary'] = float(np.mean(test_scores))
+    return result
 
 
 if __name__ == '__main__':
@@ -92,6 +126,6 @@ if __name__ == '__main__':
     hz = np.load(cfg['hz_path']) if cfg.get('hz_path') else None
     r = evaluate(X, cfg.get('fold', 'official'), tuple(cfg.get('seeds', (0, 1, 2))),
                  cfg.get('rounds', 300), cfg.get('add_dev', True), hz,
-                 cfg.get('train_cfg'))
+                 cfg.get('train_cfg'), cfg.get('also_test', False))
     json.dump(r, open(cfg['out'], 'w'))
     print('OK')

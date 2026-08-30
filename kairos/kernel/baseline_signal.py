@@ -77,7 +77,7 @@ AUX_COLUMNS = ('is_click', 'is_like', 'is_follow', 'is_comment', 'is_forward')
 
 
 def build_auxiliary_signal(data, windows, name, k=16, lr=1e-3, epochs=6, seed=0,
-                           force=False):
+                           force=False, cache_dir=AUX_CACHE_DIR):
     """Out-of-sample propensity for an auxiliary feedback signal (is_click, is_like, ...).
 
     Uses the SAME windowed-FM construction as the baseline score, applied to a different
@@ -88,8 +88,8 @@ def build_auxiliary_signal(data, windows, name, k=16, lr=1e-3, epochs=6, seed=0,
     """
     if name not in AUX_COLUMNS:
         raise ValueError(f"auxiliary_signal: '{name}' not in {AUX_COLUMNS}")
-    os.makedirs(AUX_CACHE_DIR, exist_ok=True)
-    cache = os.path.join(AUX_CACHE_DIR, f'{name}.npy')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache = os.path.join(cache_dir, f'{name}.npy')
     if os.path.exists(cache) and not force:
         return np.load(cache)
     y = (data.col(name) != 0).astype(np.float32)
