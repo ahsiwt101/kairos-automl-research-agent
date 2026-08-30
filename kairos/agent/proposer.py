@@ -28,11 +28,32 @@ WHAT IS ALREADY KNOWN (do not re-derive):
   across a user's evaluation list CANNOT change the metric.
 - The logging density collapses 5x mid-window; valid and test are both in the sparse regime.
 
-YOU WRITE PYTHON. Define exactly one function `build(ctx)` returning (X, names) where X is
-a float32 matrix aligned to ALL log rows in data order. Available on ctx: data, fold,
-causal_prefix, frozen_prefix, window_horizons, smoothed_rate, OFFICIAL_WINDOWS,
-within_user_deviation, col(). Allowed imports: numpy, scipy, math, collections, itertools.
-No file I/O, no network.
+YOU WRITE PYTHON. Define exactly one function `build(ctx)` returning (X, names) or
+(X, names, train_cfg). X must be float32 with EXACTLY ctx.data.n rows, aligned to all log
+rows in data order. Write direct code - the API below is exact, so do not add defensive
+fallbacks or try/except probing.
+
+ctx.data.n                int, number of log rows
+ctx.data.user_id          int32 (n,)        ctx.data.video_id   int32 (n,)
+ctx.data.date             int32 (n,) yyyymmdd
+ctx.data.time_ms          int64 (n,) event timestamp
+ctx.data.y_raw            int8  (n,) the long_view label
+ctx.col(name)             any log column: 'tab','duration_ms','hourmin','play_time_ms',
+                          'is_click','is_like','is_follow','is_comment','is_forward'
+ctx.col(name,'vb')        video table: 'author_id','music_id','video_type','upload_type'
+ctx.col(name,'uf')        user table:  'user_active_degree','follow_user_num_range', ...
+ctx.fold.idx['train'|'valid']   row indices    ctx.fold.horizon   last date with labels
+ctx.OFFICIAL_WINDOWS            frozen-window schedule
+ctx.window_horizons(date, windows) -> per-row horizon
+ctx.frozen_prefix(keys, date, y, labeled, horizon_per_row) -> (n_labeled, n_pos) per row,
+                          counted over rows sharing `keys` dated <= that row's horizon
+ctx.causal_prefix(keys, time_ms, y, labeled) -> (n_before, n_labeled, n_pos), STREAMING
+                          prefix. Read its docstring: it is not a correct model of this
+                          task on its own.
+ctx.smoothed_rate(pos, labeled, prior, alpha) -> beta-smoothed rate
+train_cfg (optional): {'objective': 'binary'|'lambdarank', 'group': 'user_day'|'user'}
+
+Allowed imports: numpy, scipy, math, collections, itertools. No file I/O, no network.
 
 Respond with STRICT JSON only:
 {"hypothesis": {"statement": "...", "mechanism": "...", "predicted_effect": "which slice
@@ -52,16 +73,53 @@ def _extract_json(text):
     return json.loads(m.group(0))
 
 
+PROPOSAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "hypothesis": {
+            "type": "object",
+            "properties": {
+                "statement": {"type": "string"},
+                "mechanism": {"type": "string"},
+                "predicted_effect": {"type": "string"},
+                "predicted_gain": {"type": "number"},
+                "family": {"type": "string"},
+            },
+            "required": ["statement", "mechanism", "predicted_effect",
+                         "predicted_gain", "family"],
+            "additionalProperties": False,
+        },
+        "code": {"type": "string"},
+    },
+    "required": ["hypothesis", "code"],
+    "additionalProperties": False,
+}
+
+
 class AnthropicProposer:
-    def __init__(self, model='claude-sonnet-5', max_tokens=4000, api_key=None,
-                 workspace_id=None):
+    """Claude via the Anthropic SDK.
+
+    Two things here are easy to get wrong and cost us a whole run when we did:
+
+    * Thinking is ON BY DEFAULT on Claude Opus 5 / Sonnet 5. With max_tokens=4000 the
+      model spent the entire budget inside a `thinking` block and returned zero text
+      (stop_reason='max_tokens'). max_tokens must cover thinking AND the answer.
+    * Free-text JSON is not guaranteed to parse. `output_config.format` constrains the
+      response to our schema, so the proposal either arrives well-formed or the request
+      fails loudly - no regex salvage, no silent malformed proposals.
+
+    Effort is set to 'medium' deliberately: the task is bounded and the schema is strict,
+    so buying more thinking mostly buys tokens, and token spend is a scored criterion.
+    """
+
+    def __init__(self, model='claude-opus-5', max_tokens=16000, api_key=None,
+                 workspace_id=None, effort='medium'):
         from anthropic import Anthropic
-        # identity-linked keys must name the workspace the request acts in
         ws = workspace_id or os.environ.get('ANTHROPIC_WORKSPACE_ID')
         headers = {'anthropic-workspace-id': ws} if ws else None
         self.client = Anthropic(api_key=api_key or os.environ.get('ANTHROPIC_API_KEY'),
                                 default_headers=headers)
-        self.model, self.max_tokens = model, max_tokens
+        self.model, self.max_tokens, self.effort = model, max_tokens, effort
         self.tokens_in = self.tokens_out = 0
 
     def propose(self, digest, ledger_summary, budget, last_failure=None):
@@ -70,11 +128,22 @@ class AnthropicProposer:
             user['previous_attempt_failed'] = last_failure
         msg = self.client.messages.create(
             model=self.model, max_tokens=self.max_tokens, system=SYSTEM,
+            output_config={'effort': self.effort,
+                           'format': {'type': 'json_schema', 'schema': PROPOSAL_SCHEMA}},
             messages=[{'role': 'user', 'content': json.dumps(user, default=float)}])
         self.tokens_in += msg.usage.input_tokens
         self.tokens_out += msg.usage.output_tokens
+        if msg.stop_reason == 'max_tokens':
+            raise RuntimeError(
+                f"proposal truncated at max_tokens={self.max_tokens}; thinking plus the "
+                f"answer did not fit. Raise max_tokens or lower effort.")
+        if msg.stop_reason == 'refusal':
+            raise RuntimeError(f"model declined: {getattr(msg, 'stop_details', None)}")
         text = ''.join(b.text for b in msg.content if b.type == 'text')
-        d = _extract_json(text)
+        if not text.strip():
+            raise RuntimeError(f"empty text response (stop_reason={msg.stop_reason}, "
+                               f"blocks={[b.type for b in msg.content]})")
+        d = json.loads(text)
         return Proposal(d['hypothesis'], d['code'], text)
 
 
