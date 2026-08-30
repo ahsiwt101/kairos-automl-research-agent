@@ -61,7 +61,10 @@ CANDIDATE_CONTRACT = '''
 # A candidate module must define exactly this function:
 #
 #   def build(ctx):        # may return (X, names) or (X, names, train_cfg)
-#       # train_cfg keys: objective ('binary'|'lambdarank'), group ('user_day'|'user')
+#       # train_cfg keys: objective ('binary'|'lambdarank'), group ('user_day'|'user'),
+#       #   hparams ({...}), mode ('features'|'scores'). mode='scores' means X (n,1) is
+#       #   the FINAL score you already computed (e.g. by training your own model(s) and
+#       #   blending them) - see proposer.py's SYSTEM prompt for the full rationale.
 #       """ctx exposes:
 #            ctx.data            columnar log (user_id, video_id, date, time_ms, tab, ...)
 #            ctx.fold            train/valid indices; TEST LABELS ARE NOT REACHABLE

@@ -91,9 +91,24 @@ ctx.causal_prefix(keys, time_ms, y, labeled) -> (n_before, n_labeled, n_pos), ST
                           task on its own.
 ctx.smoothed_rate(pos, labeled, prior, alpha) -> beta-smoothed rate
 train_cfg (optional): {'objective': 'binary'|'lambdarank', 'group': 'user_day'|'user',
-  'hparams': {...}} where hparams may set learning_rate, num_leaves, min_data_in_leaf,
-  feature_fraction, bagging_fraction, bagging_freq, lambda_l1, lambda_l2, max_depth,
-  min_gain_to_split - GBDT defaults have never been tuned in any experiment run so far.
+  'hparams': {...}, 'mode': 'features'|'scores'}
+  mode='features' (default): X is a feature matrix. The harness trains a fresh LightGBM on
+    it per seed and averages, using the objective/group/hparams above.
+  mode='scores': X (shape (n,1)) is the FINAL per-row score, already fully computed by
+    YOUR OWN code - e.g. you trained your own lightgbm model(s) inside build() and blended
+    them with ctx.baseline_score / ctx.cf_score / etc. yourself (numpy: within-user
+    percentile rank, then a weighted average). The harness evaluates X directly, no refit.
+    USE THIS TO ENSEMBLE MULTIPLE MODELS. Concatenating every signal into one feature
+    matrix for a single downstream tree is a DIFFERENT, WEAKER strategy that has already
+    been tried three times live and lost every time (LightGBM shatters a smooth, already-
+    good continuous score - like ctx.baseline_score - into step-function splits, which
+    degrades it; feeding it back in as a raw column does not fix this). Blending the FINAL
+    OUTPUTS of separately-trained models is the strategy that actually won by hand on this
+    benchmark (+0.0030 primary). If you train anything stochastic (e.g. lightgbm) inside
+    build(), loop over 2-3 seeds YOURSELF and average - the harness calls build() only
+    once per candidate, so it cannot average across calls for you in this mode. `lightgbm`
+    is import-allowed; do not import `torch` (it will crash if loaded alongside lightgbm
+    in the same process).
 
 Allowed imports: numpy, scipy, math, collections, itertools. No file I/O, no network.
 

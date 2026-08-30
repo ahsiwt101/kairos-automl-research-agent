@@ -50,10 +50,31 @@ class Kairos:
         self.auditor = Auditor(self.data, self.fold)
         self.hz = window_horizons(self.data.date.astype(np.int64), OFFICIAL_WINDOWS)
         np.save(os.path.join(workdir, 'hz.npy'), self.hz)
+        self._prewarm_caches()
         self.baseline_valid = 0.6016
         self.ledger = Ledger(path=os.path.join(workdir, 'ledger.jsonl'),
                              baseline=self.baseline_valid)
         self.incumbent = None          # dict with X_path, names, valid_primary
+
+    def _prewarm_caches(self):
+        """Compute every torch-backed ctx primitive here, in the trusted parent process,
+        before any candidate runs.
+
+        torch (baseline_score / auxiliary_signal, on a cold cache) and lightgbm (which
+        candidates are free to import for their own models, in 'scores' mode) crash if
+        loaded into the SAME process - each bundles its own OpenMP runtime and aborts on
+        the second load. Every candidate executes inside its own sandboxed subprocess where
+        it could plausibly do both, so the fix is to make sure a candidate's ctx access
+        never triggers a cold-cache torch import at all - only ever a cheap np.load.
+        """
+        from kairos.agent.context import make_context
+        from kairos.kernel.baseline_signal import AUX_COLUMNS
+        c = make_context(self.fold_name)
+        _ = c.baseline_score
+        _ = c.mf_factors(16)
+        _ = c.cf_score()
+        for name in AUX_COLUMNS:
+            _ = c.auxiliary_signal(name)
 
     # ------------------------------------------------------------------ budget
     def budget(self):

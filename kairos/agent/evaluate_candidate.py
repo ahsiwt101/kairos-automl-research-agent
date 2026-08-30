@@ -51,6 +51,20 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
     tr, va = fold.idx['train'], fold.idx['valid']
     ytr, yva = d.y_raw[tr], d.y_raw[va]
     gva, _ = factorize(d.user_id[va])
+
+    cfg = train_cfg or {}
+    if cfg.get('mode') == 'scores':
+        # X is already the FINAL per-row score - the candidate trained and blended its own
+        # model(s) inside build(). No refit; just score it. This is the escape hatch from
+        # "concatenate everything into one feature matrix for one downstream tree", which
+        # measurably does not work here (three live attempts, all worse than the FM
+        # baseline: LightGBM shatters a smooth continuous score into step functions).
+        s = np.asarray(X, dtype=np.float64).reshape(-1)
+        m = fast_evaluate(gva, yva, s[va])
+        return {'objective': 'scores', 'valid_primary': m['primary'],
+                'valid_std': 0.0, 'valid_gauc': m['GAUC'], 'valid_ndcg': m['nDCG@5'],
+                'seeds': [m['primary']], 'best_iter': None}
+
     names = [f'f{i}' for i in range(X.shape[1])]
     if add_dev:
         dtr, _ = within_user_deviation(X, names, d.user_id, tr, window_id=hz)
