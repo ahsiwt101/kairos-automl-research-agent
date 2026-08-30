@@ -69,6 +69,22 @@ class Proposal:
         self.hypothesis, self.code, self.raw = hypothesis, code, raw
 
 
+_UESC = re.compile(r'\\u([0-9a-fA-F]{4})')
+
+
+def _unescape(v):
+    """Decode literal \\uXXXX sequences that survive JSON decoding.
+
+    Models sometimes emit a double-escaped sequence, so json.loads yields the six
+    characters rather than the character. Harmless for code, but the hypothesis text goes
+    straight into the run log that judges read, so normalise it."""
+    if isinstance(v, str):
+        return _UESC.sub(lambda m: chr(int(m.group(1), 16)), v)
+    if isinstance(v, dict):
+        return {k: _unescape(x) for k, x in v.items()}
+    return v
+
+
 def _extract_json(text):
     m = re.search(r'\{.*\}', text, re.S)
     if not m:
@@ -147,7 +163,7 @@ class AnthropicProposer:
             raise RuntimeError(f"empty text response (stop_reason={msg.stop_reason}, "
                                f"blocks={[b.type for b in msg.content]})")
         d = json.loads(text)
-        return Proposal(d['hypothesis'], d['code'], text)
+        return Proposal(_unescape(d['hypothesis']), d['code'], text)
 
 
 class MockProposer:
@@ -263,7 +279,115 @@ def make_proposer(spec):
     if spec == 'pool':
         from kairos.agent.proposer_pool import PoolProposer
         return PoolProposer()
+    if spec == 'two-stage':
+        return TwoStageProposer()
+    if spec.startswith('two-stage:'):
+        planner, coder = spec.split(':', 1)[1].split('+')
+        return TwoStageProposer(planner=planner, coder=coder)
     if spec.startswith('anthropic:'):
         return AnthropicProposer(model=spec.split(':', 1)[1])
     base, model = spec.split('|', 1)
     return OpenAICompatibleProposer(base, model)
+
+
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "statement": {"type": "string"},
+        "mechanism": {"type": "string"},
+        "predicted_effect": {"type": "string"},
+        "predicted_gain": {"type": "number"},
+        "family": {"type": "string"},
+        "implementation_sketch": {"type": "string"},
+    },
+    "required": ["statement", "mechanism", "predicted_effect", "predicted_gain",
+                 "family", "implementation_sketch"],
+    "additionalProperties": False,
+}
+CODE_SCHEMA = {"type": "object", "properties": {"code": {"type": "string"}},
+               "required": ["code"], "additionalProperties": False}
+
+PLANNER_SYSTEM = SYSTEM.split('YOU WRITE PYTHON.')[0] + """
+YOU DO NOT WRITE CODE. Decide WHAT to try next and WHY, grounded in the diagnostics you
+are given rather than in general recommendations. Commit to a falsifiable prediction: name
+the diagnostic slice that should move and the direction. Then describe the implementation
+as a short sketch for an engineer - which keys, which aggregates, which columns.
+
+Respond with STRICT JSON only:
+{"statement": "...", "mechanism": "...", "predicted_effect": "...",
+ "predicted_gain": 0.004, "family": "history|debias|ensemble|regime|objective|capacity",
+ "implementation_sketch": "..."}"""
+
+CODER_SYSTEM = ("You implement ONE feature-construction function exactly as specified.\n"
+                "Do not redesign the idea; implement the sketch you are given.\n\n"
+                + SYSTEM[SYSTEM.index('YOU WRITE PYTHON.'):].split('Respond with STRICT')[0]
+                + '\nRespond with STRICT JSON only: {"code": "def build(ctx):\\n    ..."}')
+
+
+class TwoStageProposer:
+    """Opus plans, Sonnet implements - and repairs never re-plan.
+
+    Splitting the roles matches how the work actually divides. Deciding what to try next
+    is judgement over evidence; turning an agreed sketch into numpy is mechanical. Running
+    both on the strongest model pays a premium for the half that does not need it.
+
+    The bigger win is the repair path. When a candidate dies on a traceback the HYPOTHESIS
+    is still sound - only the code is wrong - so `repair()` re-invokes the coder alone,
+    carrying the same hypothesis forward. Re-planning on every failure re-derives reasoning
+    that was never in question, and token spend is a scored criterion here.
+    """
+
+    def __init__(self, planner='claude-opus-5', coder='claude-sonnet-5',
+                 api_key=None, workspace_id=None, plan_effort='high',
+                 code_effort='low', max_tokens=16000):
+        from anthropic import Anthropic
+        ws = workspace_id or os.environ.get('ANTHROPIC_WORKSPACE_ID')
+        headers = {'anthropic-workspace-id': ws} if ws else None
+        self.client = Anthropic(api_key=api_key or os.environ.get('ANTHROPIC_API_KEY'),
+                                default_headers=headers)
+        self.planner, self.coder = planner, coder
+        self.plan_effort, self.code_effort = plan_effort, code_effort
+        self.max_tokens = max_tokens
+        self.tokens_in = self.tokens_out = 0
+        self.by_model = {}
+        self.last_plan = None
+
+    def _call(self, model, system, payload, schema, effort):
+        msg = self.client.messages.create(
+            model=model, max_tokens=self.max_tokens, system=system,
+            output_config={'effort': effort,
+                           'format': {'type': 'json_schema', 'schema': schema}},
+            messages=[{'role': 'user', 'content': json.dumps(payload, default=float)}])
+        self.tokens_in += msg.usage.input_tokens
+        self.tokens_out += msg.usage.output_tokens
+        b = self.by_model.setdefault(model, {'in': 0, 'out': 0, 'calls': 0})
+        b['in'] += msg.usage.input_tokens; b['out'] += msg.usage.output_tokens; b['calls'] += 1
+        if msg.stop_reason == 'max_tokens':
+            raise RuntimeError(f"{model}: truncated at max_tokens={self.max_tokens}")
+        text = ''.join(x.text for x in msg.content if x.type == 'text')
+        if not text.strip():
+            raise RuntimeError(f"{model}: empty response (stop_reason={msg.stop_reason})")
+        return json.loads(text)
+
+    def propose(self, digest, ledger_summary, budget, last_failure=None):
+        plan = self._call(self.planner, PLANNER_SYSTEM,
+                          {'current_diagnostics': digest, 'history': ledger_summary,
+                           'budget': budget}, PLAN_SCHEMA, self.plan_effort)
+        self.last_plan = plan
+        return self._implement(plan, last_failure)
+
+    def repair(self, hypothesis, failure):
+        """Same hypothesis, new code. The planner is deliberately not consulted."""
+        return self._implement(self.last_plan or hypothesis, failure)
+
+    def _implement(self, plan, failure=None):
+        payload = {'implement_this': plan}
+        if failure:
+            payload['previous_attempt_failed'] = failure
+            payload['instruction'] = ('Fix the error. Keep the same idea; change only what '
+                                      'the traceback requires.')
+        d = self._call(self.coder, CODER_SYSTEM, payload, CODE_SCHEMA, self.code_effort)
+        hyp = _unescape({k: plan[k] for k in ('statement', 'mechanism',
+                                              'predicted_effect', 'predicted_gain',
+                                              'family')})
+        return Proposal(hyp, d['code'], json.dumps(plan))

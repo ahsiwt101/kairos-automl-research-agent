@@ -89,9 +89,16 @@ class Kairos:
         digest = self.incumbent['digest'] if self.incumbent else {
             'primary': self.baseline_valid, 'note': 'FM baseline, no diagnostics yet'}
         last_failure = None
+        prev_hyp = None
         for attempt in range(self.repair_attempts + 1):
-            prop = self.proposer.propose(digest, self.ledger.summary(), self.budget(),
-                                         last_failure)
+            # A failed candidate does not invalidate the hypothesis - only the code. If the
+            # proposer can repair, re-invoke the coder alone and keep the plan.
+            if attempt and last_failure and hasattr(self.proposer, 'repair'):
+                prop = self.proposer.repair(prev_hyp, last_failure)
+            else:
+                prop = self.proposer.propose(digest, self.ledger.summary(), self.budget(),
+                                             last_failure)
+            prev_hyp = prop.hypothesis
             hyp = Hypothesis(**prop.hypothesis)
             res = run_candidate(prop.code, self.fold_name,
                                 workdir=os.path.join(self.workdir, f'cand{n}'))
