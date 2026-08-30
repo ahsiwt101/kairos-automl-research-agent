@@ -30,6 +30,10 @@ WHAT IS ALREADY KNOWN (do not re-derive):
 - Your candidate is trained by LightGBM on the matrix you return, so you cannot rediscover
   the FM's ID crosses. `ctx.baseline_score` gives you them directly; a matrix WITHOUT it
   will almost certainly score below the baseline and be rejected.
+- `ctx.mf_factors`, `ctx.auxiliary_signal`, and `ctx.cf_score` are DIFFERENT signals from
+  `ctx.baseline_score` and from each other (collaborative filtering, auxiliary feedback,
+  and behavioural similarity respectively) - combining several is more likely to help than
+  any single one, but you decide the composition.
 
 YOU WRITE PYTHON. Define exactly one function `build(ctx)` returning (X, names) or
 (X, names, train_cfg). X must be float32 with EXACTLY ctx.data.n rows, aligned to all log
@@ -58,6 +62,22 @@ ctx.baseline_score        float32 (n,) the official FM baseline's OUT-OF-SAMPLE 
                           each row (trained per window on data before it). This is the
                           model you are trying to beat - include it as a feature and build
                           on it rather than trying to rediscover it.
+ctx.mf_factors(dim=16)    -> (U, V) float32 (n,dim) each. Implicit-ALS collaborative-
+                          filtering embeddings, leakage-safe per frozen window. A
+                          DIFFERENT inductive bias than the FM's per-ID crosses (a low-rank
+                          factorization of the whole 0.58%-dense interaction matrix), so
+                          combining it with baseline_score is more promising than either
+                          alone. dot(U[i],V[i]) is a CF score; the raw vectors can also be
+                          used as per-dimension features.
+ctx.auxiliary_signal(name) -> float32 (n,) out-of-sample propensity for another feedback
+                          signal. name in {'is_click','is_like','is_follow','is_comment',
+                          'is_forward'}. The legitimate route to these signals - their raw
+                          columns are blocked at ctx.col() because they are outcomes of
+                          THIS row and would leak the answer.
+ctx.cf_score()            -> (score, hist_count) float32 (n,) each. IDF-weighted item-item
+                          CF: mean similarity between the row's item and this user's
+                          frozen-history items. hist_count is a confidence weight (0 = cold
+                          start).
 ctx.fold.idx['train'|'valid']   row indices    ctx.fold.horizon   last date with labels
 ctx.OFFICIAL_WINDOWS            frozen-window schedule
 ctx.window_horizons(date, windows) -> per-row horizon
@@ -70,7 +90,10 @@ ctx.causal_prefix(keys, time_ms, y, labeled) -> (n_before, n_labeled, n_pos), ST
                           prefix. Read its docstring: it is not a correct model of this
                           task on its own.
 ctx.smoothed_rate(pos, labeled, prior, alpha) -> beta-smoothed rate
-train_cfg (optional): {'objective': 'binary'|'lambdarank', 'group': 'user_day'|'user'}
+train_cfg (optional): {'objective': 'binary'|'lambdarank', 'group': 'user_day'|'user',
+  'hparams': {...}} where hparams may set learning_rate, num_leaves, min_data_in_leaf,
+  feature_fraction, bagging_fraction, bagging_freq, lambda_l1, lambda_l2, max_depth,
+  min_gain_to_split - GBDT defaults have never been tuned in any experiment run so far.
 
 Allowed imports: numpy, scipy, math, collections, itertools. No file I/O, no network.
 

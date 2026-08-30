@@ -42,6 +42,7 @@ class Context:
         self._fm = None
         self._mf = {}
         self._aux = {}
+        self._cf = None
 
     # convenience accessors so candidates need no knowledge of the cache layout
     def col(self, name, table='log'):
@@ -173,6 +174,25 @@ class Context:
             from kairos.kernel.baseline_signal import build_auxiliary_signal
             self._aux[name] = build_auxiliary_signal(self.data, self.OFFICIAL_WINDOWS, name)
         return self._aux[name]
+
+    def cf_score(self):
+        """IDF-weighted item-item collaborative filtering, per row.
+
+        Returns (score, hist_count): float32 (n,) each. score is the mean similarity
+        between the row's candidate item and the items in THIS USER's frozen history;
+        hist_count is how many history items that mean was taken over (0 = cold start,
+        usable as a confidence weight - a mean over 1 item is much noisier than over 50).
+
+        Similarity is IDF-weighted co-occurrence (Breese/Heckerman/Kadie): two users who
+        both watched an obscure video is stronger evidence of taste overlap than two users
+        who both watched a blockbuster, so raw co-occurrence undervalues the former.
+
+        Leakage-safe per frozen window, same construction as mf_factors and baseline_score.
+        """
+        if self._cf is None:
+            from kairos.kernel.cf_signal import build_cf_score
+            self._cf = build_cf_score(self.data, self.OFFICIAL_WINDOWS)
+        return self._cf
 
     def labels_visible(self):
         """Labels with anything past the fold horizon replaced by -1."""
