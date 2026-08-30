@@ -55,8 +55,15 @@ for name in ('runs/sv_fm.npy','runs/gb_s0_va.npy','runs/fm_tau7_s0_va.npy'):
     try: s = np.load(name)
     except Exception: continue
     idx = fold.idx['valid']
-    u = d.user_id[idx]; y = d.y_raw[idx]
-    r = ref_eval(list(u), list(y), list(s))
+    u = d.user_id[idx]
+    # d.y_raw is int8. Python's builtin sum() over numpy.int8 scalars silently OVERFLOWS
+    # past 127 (sum([int8]*200) == -56, not 200) - the official evaluate.py's auc() sums
+    # labels with a bare sum(), so feeding it int8 corrupts npos and produces garbage.
+    # This never touches the real scoring path (fast_evaluate casts to float64; the
+    # official data.load() yields plain Python ints) - it only bit the reference call in
+    # THIS test script. Cast to plain int before calling the slow reference.
+    y = [int(v) for v in d.y_raw[idx]]
+    r = ref_eval([int(v) for v in u], y, list(s))
     g,_ = factorize(u); f = fast_evaluate(g, y, s)
     dd = max(abs(r[k]-f[k]) for k in ('GAUC','nDCG@5','primary'))
     worst = max(worst, dd)
