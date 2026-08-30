@@ -4,10 +4,29 @@ Deliberately includes `causal_prefix`, which is the WRONG primitive for this tas
 though it looks right.  The agent is permitted to make that mistake: the auditor catches
 it from the output, and the recovery is the interesting behaviour to demonstrate.  Hiding
 the footgun would hide the result.
+
+`ctx.col()` deliberately does NOT expose every log column, though. Columns like `is_click`,
+`is_like`, `play_time_ms` are OUTCOMES of the impression, not context known before it is
+served - and long_view is itself a near-deterministic function of play_time_ms (a perfect
+watch-ratio predictor scores 0.80 primary; see exp09). Our replay harness happens to have
+these columns for every row including valid/test because it is historical logs, but a real
+ranking model never has this row's own outcome at scoring time. Exposing them raw would let
+a candidate "discover" a spectacular result that is pure leakage and that none of the
+existing structural checks would catch (it is neither user-constant nor future-dated).
+They are reachable only through auxiliary_signal(), which time-gates them exactly like
+frozen_prefix does for the scored label.
 """
 import numpy as np
 from kairos.kernel.dataset import Data
 from kairos.kernel import causal, frozenfeat
+
+# Pre-exposure: known before the item is served, safe as a same-row feature.
+_SAFE_RAW_COLUMNS = {'tab', 'duration_ms', 'hourmin', 'date', 'time_ms', 'is_rand',
+                     'user_id', 'video_id'}
+# Outcomes of the impression - only reachable through time-gated aggregation.
+_OUTCOME_COLUMNS = {'is_click', 'is_like', 'is_follow', 'is_comment', 'is_forward',
+                    'is_hate', 'long_view', 'is_profile_enter', 'play_time_ms',
+                    'profile_stay_time', 'comment_stay_time'}
 
 
 class Context:
@@ -21,6 +40,8 @@ class Context:
         self.OFFICIAL_WINDOWS = frozenfeat.OFFICIAL_WINDOWS
         self.within_user_deviation = frozenfeat.within_user_deviation
         self._fm = None
+        self._mf = {}
+        self._aux = {}
 
     # convenience accessors so candidates need no knowledge of the cache layout
     def col(self, name, table='log'):
@@ -28,7 +49,21 @@ class Context:
              table='log' -> one entry per LOG ROW      (len == ctx.data.n)
              table='vb'  -> one entry per VIDEO        (len == n_videos)
              table='uf'  -> one entry per USER         (len == n_users)
-        Use video_attr() / user_attr() to get the side tables broadcast to log rows."""
+        Use video_attr() / user_attr() to get the side tables broadcast to log rows.
+
+        Raises for outcome columns (is_click, is_like, play_time_ms, ...): this row's own
+        outcome is not known before the item is served, so it cannot be a feature for
+        predicting this row's own label. Use auxiliary_signal(name) for a leakage-safe,
+        out-of-sample HISTORICAL aggregate of the same signal.
+        """
+        if table == 'log' and name in _OUTCOME_COLUMNS:
+            raise ValueError(
+                f"ctx.col('{name}'): this is an OUTCOME of the impression, not something "
+                f"known before it is served. Using this row's own {name} to predict this "
+                f"row's own long_view leaks the answer (long_view is itself close to a "
+                f"deterministic function of play_time_ms). Use "
+                f"ctx.auxiliary_signal('{name}') instead - a properly time-gated, "
+                f"out-of-sample historical rate, exactly like ctx.baseline_score.")
         return self.data.col(name, table)
 
     def video_attr(self, name):
@@ -104,6 +139,40 @@ class Context:
             from kairos.kernel.baseline_signal import build_fm_signal
             self._fm = build_fm_signal(self.data, self.OFFICIAL_WINDOWS)
         return self._fm
+
+    def mf_factors(self, dim=16):
+        """Leakage-safe implicit-feedback matrix-factorization embeddings, per row.
+
+        Returns (U, V): float32 (n, dim) each. dot(U[i], V[i]) is a personalised
+        collaborative-filtering score for row i; the raw vectors can also be crossed with
+        other features or fed to the tree dimension-by-dimension. This is a DIFFERENT
+        inductive bias than the FM's pointwise user_id x video_id embeddings (a low-rank
+        factorization of the whole interaction matrix at once, useful precisely because
+        train is only 0.58% dense), so it is complementary rather than redundant with
+        ctx.baseline_score - combining the two is more promising than either alone.
+
+        Trained per frozen window on positives dated at/before that window's horizon;
+        rows for users/items with no prior history are exactly zero (cold start), never a
+        leak. Cold coverage on this data is ~65-75% non-zero; treat the rest as missing.
+        """
+        if dim not in self._mf:
+            from kairos.kernel.mf_signal import build_mf_factors
+            self._mf[dim] = build_mf_factors(self.data, self.OFFICIAL_WINDOWS, dim=dim)
+        return self._mf[dim]
+
+    def auxiliary_signal(self, name):
+        """Out-of-sample propensity for an auxiliary feedback signal.
+
+        name in {'is_click','is_like','is_follow','is_comment','is_forward'}. This is the
+        legitimate route to these signals - ctx.col(name) is blocked because a row's own
+        outcome cannot be a feature for its own label, but a model's out-of-sample belief
+        about the row (trained on strictly earlier data, exactly like ctx.baseline_score)
+        is not leakage and may carry information long_view's own history misses.
+        """
+        if name not in self._aux:
+            from kairos.kernel.baseline_signal import build_auxiliary_signal
+            self._aux[name] = build_auxiliary_signal(self.data, self.OFFICIAL_WINDOWS, name)
+        return self._aux[name]
 
     def labels_visible(self):
         """Labels with anything past the fold horizon replaced by -1."""
