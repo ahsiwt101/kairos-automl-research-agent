@@ -220,3 +220,70 @@ def window_horizons(date, windows):
         m = (date >= lo) & (date <= hi)
         h[m] = hz
     return h
+
+
+def frozen_prefix_decayed(keys, date, y, labeled, horizon_per_row, halflife_days=7.0):
+    """Like frozen_prefix, but weights older evidence less (exponential half-life).
+
+    Item quality drifts - a video that performed well two weeks ago is weaker evidence
+    about today than one that performed well yesterday - but frozen_prefix weights every
+    observation inside the horizon equally.
+
+    The trick that makes this one cumsum rather than a per-row scan: the weighted sum for
+    a row with horizon h is
+        S(h) = sum_{d<=h} n_d * 2^{-(h-d)/H}  =  2^{-h/H} * sum_{d<=h} n_d * 2^{d/H}
+    so pre-multiplying each day's count by 2^{d/H} makes the inner term an ordinary
+    prefix sum over days, and the per-row factor 2^{-h/H} is applied afterwards.
+    """
+    date = np.asarray(date).astype(np.int64)
+    keys = _as_key_array(keys, len(date), 'frozen_prefix_decayed')
+    n = len(keys)
+    uk, kid = np.unique(keys, return_inverse=True)
+    kid = kid.astype(np.int64)
+    SC = np.int64(100_000_000)
+
+    # day index (compact, monotone) so the exponent stays small and well-conditioned
+    ud, dinv = np.unique(date, return_inverse=True)
+    day_idx = _dayindex(ud)
+    day_idx = day_idx - day_idx.min()
+    w_day = np.exp2(day_idx / float(halflife_days))          # 2^{d/H}, per distinct day
+
+    comb = kid * SC + date
+    uc, inv = np.unique(comb, return_inverse=True)
+    wrow = w_day[dinv]
+    lab = np.bincount(inv, weights=(labeled * wrow).astype(np.float64), minlength=len(uc))
+    pos = np.bincount(inv, weights=(y * labeled * wrow).astype(np.float64), minlength=len(uc))
+
+    uc_kid = uc // SC
+    seg_start = np.searchsorted(uc_kid, uc_kid, side='left')
+    cl = np.cumsum(lab); cp = np.cumsum(pos)
+    base_l = np.where(seg_start > 0, cl[seg_start - 1], 0.0)
+    base_p = np.where(seg_start > 0, cp[seg_start - 1], 0.0)
+    cum_l = cl - base_l
+    cum_p = cp - base_p
+
+    tgt = kid * SC + horizon_per_row.astype(np.int64)
+    j = np.searchsorted(uc, tgt, side='right') - 1
+    own = (j >= 0) & (uc_kid[np.clip(j, 0, len(uc) - 1)] == kid)
+    jj = np.clip(j, 0, len(uc) - 1)
+    # rescale by 2^{-h/H} for each row's own horizon
+    hz_day = _dayindex(horizon_per_row.astype(np.int64)) - _dayindex(ud).min()
+    scale = np.exp2(-hz_day / float(halflife_days))
+    out_l = np.where(own, cum_l[jj] * scale, 0.0)
+    out_p = np.where(own, cum_p[jj] * scale, 0.0)
+    return out_l, out_p
+
+
+def _dayindex(d):
+    d = np.asarray(d).astype(np.int64)
+    return (d // 10000) * 372 + ((d // 100) % 100) * 31 + (d % 100)
+
+
+def hierarchical_rate(child_pos, child_n, parent_rate, alpha=20.0):
+    """Empirical-Bayes shrinkage toward a PARENT rate instead of the global mean.
+
+    For an item with 5 impressions, the global average (0.33) is a poor prior; that item's
+    AUTHOR's rate, estimated over hundreds of impressions, is a much better one. Standard
+    fixed-alpha smoothing throws that structure away.
+    """
+    return (child_pos + alpha * parent_rate) / (child_n + alpha)

@@ -266,6 +266,91 @@ live-agent candidate ever beat the incumbent it would need to beat to replace it
   coder used `n_estimators`, an XGBoost/sklearn name, not LightGBM's). Moved the
   validation into the same subprocess and retry loop as the candidate's own code.
 
+## 8d. Why ~0.60 is the ceiling: a signal decomposition
+
+Every entry will report a number against the baseline. Almost none will say why the number
+is where it is. Nested model fits on the validation split, each rung adding one information
+source to the one above it (standalone = that signal alone; cumulative = a fitted model on
+everything up to and including it):
+
+| signal | standalone | cumulative | marginal |
+|---|---|---|---|
+| context (tab) | 0.5399 | 0.5405 | — |
+| + item quality | 0.5807 | **0.5955** | **+0.0550** |
+| + item x context | 0.5877 | 0.5966 | +0.0011 |
+| + duration fit (user x durbucket) | 0.4914 | 0.5935 | −0.0030 |
+| + affinity (user x author) | 0.4825 | 0.5938 | +0.0002 |
+| + affinity (user x item) | 0.4818 | 0.5940 | +0.0002 |
+
+**Context plus item quality reaches 0.5955. Every personalisation feature after that is
+worth approximately nothing.** The official FM's 0.6016 means its ID embeddings buy about
++0.006 over a model with no personalisation at all. On this benchmark the "recommender"
+part of the recommender system is worth ~0.006 of primary; the task is ~95% context and
+item quality.
+
+Read the two columns differently: a sparse affinity rate scores at random *standalone*
+because for most rows it is a constant prior, and a constant cannot order a user's list.
+It can still pay inside a model that has other features to gate it on — it just doesn't,
+here, at 0.58% matrix density.
+
+This explains the whole pattern of null results: the organizers' feature and capacity
+ablations, our six-loss ablation, and everything in §8 below. They are all interventions on
+the ~0.006 of the score that is personalisation. It also reframes the oracle gap: 0.6045 to
+0.8484 is **not** unexploited affinity signal waiting to be modelled, it is per-impression
+noise — mood, interruption, what came before in the feed — that no user-item model recovers
+at this density.
+
+## 8e. What actually moves the number, and what does not
+
+Interventions tested this project and found inside seed noise: six loss functions
+(§4) · static features and capacity (organizer-tested) · recency weighting · watch-time
+regression, three ways · D2Q duration-deconfounded quantile · refit on train+validation ·
+four `tab` encodings (raw numeric / target-encoded / LightGBM-categorical / both; spread
+0.5982–0.5988 at σ≈0.0002) · eight item-quality estimators (exponential decay ×
+hierarchical empirical-Bayes shrinkage toward the author's rate; best +0.0002, and
+aggressive decay at H=3d **hurts** by −0.0015, which says item quality here is stable
+rather than drifting, so down-weighting old evidence just discards sample size) · and the
+live agent's own MF / CF / auxiliary-signal attempts.
+
+Two things work, and only two:
+
+- **Variance reduction.** Seed-averaging the FM, which saturates fast: 1 seed 0.6013,
+  3 seeds 0.6026, 5 seeds 0.6027, 10 seeds 0.6027. Three seeds captures it; beyond that is
+  wasted compute. (This independently confirms the ≥3-seed rule §1 derived from the noise
+  floor.)
+- **Not fooling yourself.** Selection discipline is worth avoiding −0.0156 (§6).
+
+**A necessary refinement to our own thesis.** Given §6 we expected uniformly-weighted
+blending to generalise better than coordinate-ascent weights fitted on validation. It does
+not — the two have *identical* val→test gaps (+0.0068 each), and coordinate ascent is
+better on both splits, its advantage transferring almost exactly (+0.0026 validation →
++0.0025 test). So "validation is unreliable" is too coarse a statement. Fitting 3 blend
+weights against 22,377 users is statistically sound: many observations, few parameters,
+candidates that are not adversarially correlated. Selecting among 50 correlated *pipelines*
+on a single validation read is not. The hazard is parameters-per-observation and
+correlation structure, not validation per se.
+
+## 8f. An audit of the provided data: `video_features_statistic_pure.csv`
+
+This file holds 51 per-video aggregates including `play_progress` and `long_time_play_cnt`
+— direct measures of exactly the item quality that §8d shows carries all the signal. It is
+KuaiRand data, so the rules permit it. We do not use it, and the reason is worth stating.
+
+Its counters are **51–66x larger than this sample's own impression counts**, so they are
+KuaiShou's platform-wide production numbers, not aggregates over the released logs. That
+has a consequence we could not engineer around: **their temporal coverage cannot be
+established from the data at all.** Correlation diagnostics are inconclusive
+(`play_progress` correlates *better* with test-period item rates, +0.5797, than
+train-period, +0.5473, which is the signature of a full-period aggregate — but at
+n=1,324 items that gap is ~1.2 standard errors, and a second column from the same file
+points the other way).
+
+If those aggregates include the evaluation window, using them imports test-period
+behaviour under a column name no leakage check would flag. Since the entire thesis of this
+project is that you cannot trust a number whose provenance you have not established, using
+a temporally-unverifiable feature to raise our score would refute the work. We exclude it
+and record the decision here rather than silently benefiting from it.
+
 ## 9. Open, and honestly untried by us
 
 Sequence modelling (DIN/SIM-style target attention over user history) is the largest
