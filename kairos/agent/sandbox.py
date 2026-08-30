@@ -94,6 +94,11 @@ def main():
         X, names, cfg = built
     else:
         X, names = built
+    # Validate train_cfg KEYS here, in the same subprocess and same repair loop as the
+    # candidate's own code - not in the later, separate scoring subprocess, which has no
+    # repair path and would silently discard a build() that ran perfectly correctly.
+    from kairos.agent.traincfg import validate_keys as _validate_hparam_keys
+    _validate_hparam_keys((cfg or {{}}).get('hparams'))
     X = np.asarray(X, dtype=np.float32)
     assert X.ndim == 2, f"build() must return a 2-D matrix, got shape {{X.shape}}"
     assert X.shape[0] == ctx.data.n, (

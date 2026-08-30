@@ -19,30 +19,7 @@ import lightgbm as lgb
 PARAMS = dict(objective='binary', metric='auc', learning_rate=0.05, num_leaves=63,
               min_data_in_leaf=200, feature_fraction=0.8, bagging_fraction=0.8,
               bagging_freq=1, verbose=-1, num_threads=8)
-# Hyperparameters a candidate's train_cfg is allowed to override. This exact PARAMS dict
-# has been used, UNTUNED, across every experiment this project has run - it is free
-# points for whichever candidate is the first to try something else.
-TUNABLE = ('learning_rate', 'num_leaves', 'min_data_in_leaf', 'feature_fraction',
-          'bagging_fraction', 'bagging_freq', 'lambda_l1', 'lambda_l2',
-          'max_depth', 'min_gain_to_split')
-_BOUNDS = dict(learning_rate=(0.005, 0.3), num_leaves=(7, 255), min_data_in_leaf=(20, 2000),
-              feature_fraction=(0.3, 1.0), bagging_fraction=(0.3, 1.0), bagging_freq=(0, 10),
-              lambda_l1=(0.0, 10.0), lambda_l2=(0.0, 10.0), max_depth=(-1, 16),
-              min_gain_to_split=(0.0, 1.0))
-
-
-def _sanitize_hparams(hp):
-    """Clip to sane ranges rather than trust the caller - a wild learning_rate or
-    negative min_data_in_leaf would otherwise burn a whole iteration on a training
-    pathology instead of a real result."""
-    out = {}
-    for k, v in (hp or {}).items():
-        if k not in TUNABLE:
-            raise ValueError(f"train_cfg.hparams: '{k}' is not tunable; choose from "
-                             f"{TUNABLE}")
-        lo, hi = _BOUNDS[k]
-        out[k] = type(lo)(np.clip(v, lo, hi))
-    return out
+from kairos.agent.traincfg import sanitize as _sanitize_hparams
 
 
 def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
