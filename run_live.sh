@@ -31,8 +31,10 @@ PRIOR = (
 )
 
 p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
+# Resume from the best result any run has produced, not from the official baseline -
+# otherwise a fresh run can 'improve' on 0.6016 while regressing against what we have.
 k = Kairos(p, max_iters=12, seeds=(0,1,2), workdir='runs/kairos_live',
-           max_tokens_total=300000, prior_summary=PRIOR)
+           max_tokens_total=300000, prior_summary=PRIOR, baseline_valid=0.6034)
 s = k.run()
 import json
 s['tokens_by_model'] = p.by_model

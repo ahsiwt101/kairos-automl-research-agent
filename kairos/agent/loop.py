@@ -29,7 +29,7 @@ class Kairos:
     def __init__(self, proposer, fold_name='official', workdir='runs/kairos',
                  eps=0.002, stall_limit=3, max_iters=50, max_seconds=6 * 3600,
                  seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True,
-                 max_tokens_total=400_000, prior_summary=None):
+                 max_tokens_total=400_000, prior_summary=None, baseline_valid=0.6016):
         self.proposer = proposer
         self.fold_name = fold_name
         self.workdir = workdir
@@ -55,7 +55,12 @@ class Kairos:
         self.hz = window_horizons(self.data.date.astype(np.int64), OFFICIAL_WINDOWS)
         np.save(os.path.join(workdir, 'hz.npy'), self.hz)
         self._prewarm_caches()
-        self.baseline_valid = 0.6016
+        # The score a candidate must beat to be accepted. Defaults to the official FM
+        # baseline, but a run that resumes work should be given the BEST KNOWN result
+        # instead - otherwise each fresh run restarts from the baseline and can "accept" a
+        # candidate that is worse than one an earlier run already found. Same class of bug
+        # as the stall counter seeding from -inf: comparing against the wrong reference.
+        self.baseline_valid = baseline_valid
         # Diagnostics of the starting incumbent (the official FM baseline). Without this
         # the FIRST iteration has nothing to compare against, so its prediction scores as
         # None - and the first iteration is the one most worth scoring.
