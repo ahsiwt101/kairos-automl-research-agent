@@ -18,11 +18,52 @@ import numpy as np
 CACHE_DIR = 'runs/din_cache'
 
 
+def _training_weights(slen_tr, slen_eval, mode, clip=8.0):
+    """Per-row training weights that correct the train/serve history-length mismatch.
+
+    Training rows average 7.3 history items (32% empty) while validation and test average
+    ~17 (4% empty), because 78% of training rows sit in the early window before histories
+    have accumulated. The model therefore learns attention over short histories and is
+    served long ones.
+
+    Note this runs OPPOSITE to the obvious "drop history during training" regularisation:
+    dropping would shorten training histories further and widen the very gap being closed.
+
+      late_only   train only on rows whose window already has realistic histories.
+                  Distribution matches, but discards ~78% of the data.
+      recency     exponential weight toward later rows - a soft version of late_only that
+                  keeps the early rows at low weight instead of throwing them away.
+      hist_match  importance weighting: w = p_eval(len) / p_train(len), so the weighted
+                  training distribution matches the serving one directly. Clipped, because
+                  raw importance ratios have brutal variance in the tails.
+    """
+    import numpy as _np
+    if mode is None:
+        return _np.ones(len(slen_tr), dtype=_np.float32)
+    if mode == 'late_only':
+        return (slen_tr >= 10).astype(_np.float32)
+    if mode == 'recency':
+        r = _np.argsort(_np.argsort(slen_tr)) / max(len(slen_tr) - 1, 1)
+        return (0.2 + 1.8 * r).astype(_np.float32)
+    if mode == 'hist_match':
+        bins = _np.array([0, 1, 3, 6, 10, 16, 24, 33])
+        tb = _np.clip(_np.digitize(slen_tr, bins) - 1, 0, len(bins) - 2)
+        eb = _np.clip(_np.digitize(slen_eval, bins) - 1, 0, len(bins) - 2)
+        p_tr = _np.bincount(tb, minlength=len(bins)-1).astype(_np.float64)
+        p_ev = _np.bincount(eb, minlength=len(bins)-1).astype(_np.float64)
+        p_tr /= max(p_tr.sum(), 1); p_ev /= max(p_ev.sum(), 1)
+        ratio = _np.clip(p_ev / _np.maximum(p_tr, 1e-6), 0.0, clip)
+        w = ratio[tb].astype(_np.float32)
+        return w / max(w.mean(), 1e-6)
+    raise ValueError(f"unknown weight mode {mode!r}")
+
+
 def build_din_signal(data, fold, hz, seeds=(0, 1), max_len=32, k=32, hidden=64,
-                     max_epochs=6, cache_dir=CACHE_DIR, force=False):
+                     max_epochs=6, cache_dir=CACHE_DIR, force=False, weight_mode=None):
     """Returns float32 (n,) - averaged DIN logits over `seeds`, aligned to all log rows."""
     os.makedirs(cache_dir, exist_ok=True)
-    cache = os.path.join(cache_dir, f'{fold.name}_k{k}.npy')
+    tag = f'{fold.name}_k{k}' + (f'_{weight_mode}' if weight_mode else '')
+    cache = os.path.join(cache_dir, tag + '.npy')
     if os.path.exists(cache) and not force:
         return np.load(cache)
 
@@ -32,7 +73,7 @@ def build_din_signal(data, fold, hz, seeds=(0, 1), max_len=32, k=32, hidden=64,
     from kairos.models.din import DIN, build_sequences
 
     tr, va = fold.idx['train'], fold.idx['valid']
-    seq, _ = build_sequences(data, hz, max_len=max_len)
+    seq, slen = build_sequences(data, hz, max_len=max_len)
     enc = Encoder(data).fit(tr)
     n_items = int(data.video_id.max()) + 1
     ytr = data.y_raw[tr].astype(np.float32)
@@ -42,6 +83,8 @@ def build_din_signal(data, fold, hz, seeds=(0, 1), max_len=32, k=32, hidden=64,
     itr = torch.from_numpy((data.video_id[tr] + 1).astype(np.int64))
     str_ = torch.from_numpy(seq[tr])
     ytr_t = torch.from_numpy(ytr)
+    wtr = _training_weights(slen[tr], slen[va], weight_mode)
+    wtr_t = torch.from_numpy(wtr)
     Xva = torch.from_numpy(enc.transform(va).astype(np.int64))
     iva = torch.from_numpy((data.video_id[va] + 1).astype(np.int64))
     sva = torch.from_numpy(seq[va])
@@ -58,7 +101,7 @@ def build_din_signal(data, fold, hz, seeds=(0, 1), max_len=32, k=32, hidden=64,
                 s = torch.from_numpy(perm[i:i + 4096])
                 opt.zero_grad()
                 loss = torch.nn.functional.binary_cross_entropy_with_logits(
-                    m(Xtr[s], itr[s], str_[s]), ytr_t[s])
+                    m(Xtr[s], itr[s], str_[s]), ytr_t[s], weight=wtr_t[s])
                 loss.backward(); opt.step()
             m.eval()
             with torch.no_grad():
