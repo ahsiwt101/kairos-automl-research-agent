@@ -31,6 +31,11 @@ def causal_prefix(keys, time_ms, y, labeled, tiebreak=None):
 
     returns prior_n, prior_labeled, prior_pos  -- all (N,), aligned to the input order.
     """
+    keys = np.asarray(keys)
+    if keys.ndim != 1:
+        raise ValueError(
+            f"causal_prefix: `keys` must be a 1-D array with one entry per log row, got "
+            f"shape {keys.shape}; factorize composite keys into a single 1-D array first.")
     n = len(keys)
     tb = np.arange(n) if tiebreak is None else tiebreak
     order = np.lexsort((tb, time_ms, keys))
@@ -150,6 +155,18 @@ def frozen_prefix(keys, date, y, labeled, horizon_per_row):
     per-row horizon lets train, valid and test all be built under one rule.
     """
     keys = np.asarray(keys); date = np.asarray(date).astype(np.int64)
+    # Shape errors here surface deep inside numpy as "object too deep for desired array",
+    # which tells a caller (human or model) nothing. Fail at the boundary instead.
+    if keys.ndim != 1:
+        raise ValueError(
+            f"frozen_prefix: `keys` must be a 1-D array with one entry per log row, got "
+            f"shape {keys.shape}. To combine several columns into one key, factorize the "
+            f"pair first, e.g. "
+            f"np.unique(np.stack([a, b], 1), axis=0, return_inverse=True)[1] - "
+            f"do NOT pass a list of arrays.")
+    if date.ndim != 1 or len(date) != len(keys):
+        raise ValueError(f"frozen_prefix: `date` must be 1-D and the same length as `keys` "
+                         f"({len(keys)}), got shape {date.shape}")
     n = len(keys)
     uk, kid = np.unique(keys, return_inverse=True)
     kid = kid.astype(np.int64)

@@ -46,7 +46,10 @@ ctx.fold.idx['train'|'valid']   row indices    ctx.fold.horizon   last date with
 ctx.OFFICIAL_WINDOWS            frozen-window schedule
 ctx.window_horizons(date, windows) -> per-row horizon
 ctx.frozen_prefix(keys, date, y, labeled, horizon_per_row) -> (n_labeled, n_pos) per row,
-                          counted over rows sharing `keys` dated <= that row's horizon
+                          counted over rows sharing `keys` dated <= that row's horizon.
+                          EVERY argument is a flat 1-D array of length ctx.data.n. For a
+                          composite key, factorize it into ONE 1-D array first:
+                          np.unique(np.stack([a,b],1), axis=0, return_inverse=True)[1]
 ctx.causal_prefix(keys, time_ms, y, labeled) -> (n_before, n_labeled, n_pos), STREAMING
                           prefix. Read its docstring: it is not a correct model of this
                           task on its own.
