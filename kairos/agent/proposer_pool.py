@@ -40,7 +40,13 @@ class PoolProposer:
                 p[4] if len(p) > 4 else None) for p in src]
         self.pool = [p for p in src if p[0] in order] if order else list(src)
         if order:
+            missing = [n for n in order if n not in {p[0] for p in src}]
+            if missing:
+                raise ValueError(f"unknown candidate names in order: {missing}; "
+                                 f"available: {sorted(p[0] for p in src)}")
             self.pool.sort(key=lambda p: order.index(p[0]))
+        if not self.pool:
+            raise ValueError("PoolProposer built an empty pool")
         self.i = -1
         self.tokens_in = self.tokens_out = 0
 

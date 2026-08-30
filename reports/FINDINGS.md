@@ -176,6 +176,27 @@ degenerated one of our ensembles to "FM alone").
 - **Recency weighting**, despite the density collapse: 0.6017 → 0.6020 over 3 seeds.
 - **Static features and capacity** — organizer-tested, confirmed not worth re-running.
 
+## 8b. Declining a gain we could not verify
+
+Refitting the final model on train+validation is standard practice and well motivated here:
+test sits 8-17 days past the end of training, and validation is 7 more days of data lying
+closer to it. But you cannot check it directly - training on validation destroys the only
+signal you would check it with.
+
+So we validated the *procedure* on backtest folds instead, using the boosting round count
+chosen by the train-only run (the only honest way to pick it):
+
+| fold | train-only | refit on train+valid | delta |
+|---|---|---|---|
+| backtest_a | 0.5935 | 0.5936 | +0.0000 |
+| backtest_c | 0.5698 | 0.5698 | +0.0000 |
+| official (reference only) | 0.5910 | 0.5925 | **+0.0015** |
+
+The official fold dangles +0.0015. Both backtests say the procedure is worth exactly zero,
+so we **declined it**. This is the same rule that governs everything else here: do not bank
+a gain that is only visible in the place you have already shown you cannot trust. Had we
+taken it, we would have been doing precisely what §6 warns against.
+
 ## 9. Open, and honestly untried by us
 
 Sequence modelling (DIN/SIM-style target attention over user history) is the largest
