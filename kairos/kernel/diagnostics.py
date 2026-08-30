@@ -155,3 +155,71 @@ class Diagnostics:
             out['inversions'][a] = {'total_gauc_loss': round(inv['total_gauc_loss'], 4),
                                     'worst_buckets': [[b, round(v, 4)] for b, v in top_b]}
         return out
+
+
+# ---------------------------------------------------------------------------
+# Checkable prediction vocabulary
+# ---------------------------------------------------------------------------
+# The agent commits to a falsifiable claim each iteration ("duration inversions should
+# fall"). Scoring that claim is what separates UNDERSTANDING from LUCK: a family that keeps
+# predicting the right slice movement has a model of the problem, one that gains by
+# accident does not, and only the first deserves more of a limited iteration budget.
+#
+# The vocabulary is a fixed enum rather than free text or a JSON path. Free text cannot be
+# checked mechanically, and a free-form path invites keys that do not exist - which would
+# silently score every prediction as unverifiable and quietly disable the whole mechanism.
+PREDICTABLE = {
+    'gauc':                      lambda dg: dg['GAUC'],
+    'ndcg':                      lambda dg: dg['nDCG@5'],
+    'primary':                   lambda dg: dg['primary'],
+    'inversion_loss_duration':   lambda dg: dg['inversions']['duration_decile']['total_gauc_loss'],
+    'inversion_loss_popularity': lambda dg: dg['inversions']['item_pop_decile']['total_gauc_loss'],
+    'headroom_total':            lambda dg: dg['headroom_total'],
+    'auc_low_activity_users':    lambda dg: _slice_auc(dg, 'user_train_impressions', lo=True),
+    'auc_high_activity_users':   lambda dg: _slice_auc(dg, 'user_train_impressions', lo=False),
+    'auc_short_lists':           lambda dg: _slice_auc(dg, 'eval_list_size', lo=True),
+    'auc_long_lists':            lambda dg: _slice_auc(dg, 'eval_list_size', lo=False),
+}
+
+
+def _slice_auc(dg, slice_name, lo=True):
+    """Mean AUC over the lowest- or highest-bucket entries the digest reports."""
+    rows = dg.get('slices', {}).get(slice_name, [])
+    vals = [r['auc_mean'] for r in rows
+            if r.get('auc_mean') is not None and r['auc_mean'] == r['auc_mean']]
+    if not vals:
+        return float('nan')
+    buckets = [r['bucket'] for r in rows]
+    pick = min(buckets) if lo else max(buckets)
+    for r in rows:
+        if r['bucket'] == pick and r.get('auc_mean') == r.get('auc_mean'):
+            return r['auc_mean']
+    return float(np.mean(vals))
+
+
+def check_prediction(prediction, before, after, min_change=1e-4):
+    """Did the agent's stated effect actually happen?
+
+    Returns True / False, or None when the claim cannot be checked (unknown diagnostic, a
+    missing digest, or a NaN on either side). Returning None rather than False matters: an
+    unverifiable claim is not a wrong claim, and scoring it as one would punish the agent
+    for our instrumentation gaps and corrupt the family track record.
+    """
+    if not prediction or not isinstance(prediction, dict):
+        return None
+    name = prediction.get('diagnostic')
+    direction = prediction.get('direction')
+    if name not in PREDICTABLE or direction not in ('increase', 'decrease'):
+        return None
+    if not before or not after:
+        return None
+    try:
+        b, a = PREDICTABLE[name](before), PREDICTABLE[name](after)
+    except (KeyError, TypeError, IndexError):
+        return None
+    if b != b or a != a:            # NaN on either side
+        return None
+    delta = a - b
+    if abs(delta) < min_change:     # nothing moved; the claim is not evidenced
+        return False
+    return delta > 0 if direction == 'increase' else delta < 0

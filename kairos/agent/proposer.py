@@ -30,6 +30,10 @@ WHAT IS ALREADY KNOWN (do not re-derive):
 - Your candidate is trained by LightGBM on the matrix you return, so you cannot rediscover
   the FM's ID crosses. `ctx.baseline_score` gives you them directly; a matrix WITHOUT it
   will almost certainly score below the baseline and be rejected.
+- Ensembling is the ONLY intervention measured to work on this benchmark. Seed-averaging
+  saturates at 3 seeds. Blending DECORRELATED models (e.g. ctx.refit_score with
+  ctx.din_score - different architectures, both at/above baseline) is the highest-value
+  move available; a single model, however tuned, is not.
 - `ctx.mf_factors`, `ctx.auxiliary_signal`, and `ctx.cf_score` are DIFFERENT signals from
   `ctx.baseline_score` and from each other (collaborative filtering, auxiliary feedback,
   and behavioural similarity respectively) - combining several is more likely to help than
@@ -74,6 +78,17 @@ ctx.auxiliary_signal(name) -> float32 (n,) out-of-sample propensity for another 
                           'is_forward'}. The legitimate route to these signals - their raw
                           columns are blocked at ctx.col() because they are outcomes of
                           THIS row and would leak the answer.
+ctx.refit_score()         -> float32 (n,) the baseline FM fit with the best data available
+                          FOR EACH SPLIT: train/valid rows scored by a train-only model,
+                          test rows by one refit on train+validation. Worth ~+0.002 over
+                          ctx.baseline_score (confirmed on two backtest folds), and the
+                          split asymmetry is handled inside the primitive so weights you
+                          fit on validation stay honest. PREFER THIS over baseline_score.
+ctx.din_score()           -> float32 (n,) out-of-sample DIN sequence model: target
+                          attention over the items this user actually long-viewed. Scores
+                          0.6023 standalone on validation, ABOVE the FM baseline, from an
+                          unrelated architecture - so it is worth combining with the FM
+                          rather than choosing between them.
 ctx.cf_score()            -> (score, hist_count) float32 (n,) each. IDF-weighted item-item
                           CF: mean similarity between the row's item and this user's
                           frozen-history items. hist_count is a confidence weight (0 = cold
@@ -353,9 +368,22 @@ PLAN_SCHEMA = {
         "predicted_gain": {"type": "number"},
         "family": {"type": "string"},
         "implementation_sketch": {"type": "string"},
+        "prediction": {
+            "type": "object",
+            "properties": {
+                "diagnostic": {"type": "string", "enum": [
+                    "gauc", "ndcg", "primary", "inversion_loss_duration",
+                    "inversion_loss_popularity", "headroom_total",
+                    "auc_low_activity_users", "auc_high_activity_users",
+                    "auc_short_lists", "auc_long_lists"]},
+                "direction": {"type": "string", "enum": ["increase", "decrease"]},
+            },
+            "required": ["diagnostic", "direction"],
+            "additionalProperties": False,
+        },
     },
     "required": ["statement", "mechanism", "predicted_effect", "predicted_gain",
-                 "family", "implementation_sketch"],
+                 "family", "implementation_sketch", "prediction"],
     "additionalProperties": False,
 }
 CODE_SCHEMA = {"type": "object", "properties": {"code": {"type": "string"}},
@@ -364,6 +392,14 @@ CODE_SCHEMA = {"type": "object", "properties": {"code": {"type": "string"}},
 PLANNER_SYSTEM = SYSTEM.split('YOU WRITE PYTHON.')[0] + """
 YOU DO NOT WRITE CODE. Decide WHAT to try next and WHY, grounded in the diagnostics you
 are given rather than in general recommendations.
+
+YOUR PREDICTION IS SCORED. `prediction` must name one diagnostic from the enum and the
+direction you expect it to move. After the candidate runs we check whether it actually
+moved that way, and your hypothesis FAMILY accumulates a hit-rate across iterations. A
+family that keeps predicting the right movement is treated as understanding the problem and
+earns more of the remaining budget; one that gains by accident does not. Predict the
+quantity your MECHANISM actually implies - not simply "primary increases", which is true of
+any improvement and demonstrates nothing.
 
 BUDGET IS A HARD CONSTRAINT, NOT A HINT. The run ENDS after 3 consecutive iterations
 without a +0.002 validation gain. `budget.misses_before_run_ends` tells you how many
@@ -449,4 +485,5 @@ class TwoStageProposer:
         hyp = _unescape({k: plan[k] for k in ('statement', 'mechanism',
                                               'predicted_effect', 'predicted_gain',
                                               'family')})
+        hyp['prediction'] = plan.get('prediction') or {}
         return Proposal(hyp, d['code'], json.dumps(plan))

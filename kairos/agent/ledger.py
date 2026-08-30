@@ -23,6 +23,7 @@ class Hypothesis:
     predicted_gain: float           # expected primary delta, agent's own estimate
     family: str                     # e.g. 'objective', 'history', 'debias', 'ensemble'
     source: str = 'agent'           # 'agent' | 'diagnostic' | 'literature' | 'prior'
+    prediction: dict = field(default_factory=dict)   # {diagnostic, direction}, scorable
 
 
 @dataclass

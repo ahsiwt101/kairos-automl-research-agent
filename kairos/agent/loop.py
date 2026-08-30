@@ -56,6 +56,7 @@ class Kairos:
         np.save(os.path.join(workdir, 'hz.npy'), self.hz)
         self._prewarm_caches()
         self.baseline_valid = 0.6016
+        self.base_digest = None    # diagnostics of the incumbent baseline; set on first use
         self.ledger = Ledger(path=os.path.join(workdir, 'ledger.jsonl'),
                              baseline=self.baseline_valid)
         self.incumbent = None          # dict with X_path, names, valid_primary
@@ -90,9 +91,13 @@ class Kairos:
                 'wall_clock_s': round(time.time() - self.ledger.t_start, 1),
                 'seconds_left': round(self.max_seconds - (time.time() - self.ledger.t_start), 1),
                 'tokens_in': self.proposer.tokens_in, 'tokens_out': self.proposer.tokens_out,
-                'note': ('ONE miss from termination - prefer a change with high probability '
-                         'of a small gain over an exploratory one'
-                         if self.stall_limit - stall <= 1 else 'exploration affordable')}
+                'mode': ('consolidate' if self.stall_limit - stall <= 1 else 'explore'),
+                'note': ('CONSOLIDATE: one miss ends the run. Propose a minimal variation '
+                         'on the incumbent, or a family with a non-negative track record. '
+                         'An exploratory swing here will be rejected before it is run.'
+                         if self.stall_limit - stall <= 1 else
+                         'EXPLORE: misses are affordable, a speculative swing is fine.'),
+                'family_track_record': self.ledger.family_track_record()}
 
     # ------------------------------------------------------------------ evaluation
     def _evaluate(self, X_path, train_cfg=None):
@@ -100,6 +105,7 @@ class Kairos:
                'train_cfg': train_cfg or {},
                'seeds': list(self.seeds), 'add_dev': True,
                'hz_path': os.path.abspath(os.path.join(self.workdir, 'hz.npy')),
+               'pred_out': os.path.abspath(os.path.join(self.workdir, 'valid_pred.npy')),
                'out': os.path.abspath(os.path.join(self.workdir, 'eval.json'))}
         p = os.path.join(self.workdir, 'evalcfg.json')
         json.dump(cfg, open(p, 'w'))
@@ -168,6 +174,20 @@ class Kairos:
                  f"ceiling {ceiling:.3f}, over by {over_ceiling:+.4f}")
         return ok, detail
 
+    def _digest_for(self, pred_path):
+        """Full diagnostics digest for a candidate, from its validation predictions.
+
+        The loop previously stored only a four-key summary as the "digest", which is why
+        the agent's slice-level predictions could never be checked - the quantities it was
+        predicting about were not in the dict. This computes the real thing.
+        """
+        from kairos.kernel.diagnostics import Diagnostics
+        try:
+            pred = np.load(pred_path)
+            return Diagnostics(self.fold, 'valid', pred.astype(np.float64)).digest()
+        except Exception:
+            return None
+
     # ------------------------------------------------------------------ one iteration
     def step(self, n):
         from kairos.kernel.diagnostics import Diagnostics
@@ -186,6 +206,27 @@ class Kairos:
                                              last_failure)
             prev_hyp = prop.hypothesis
             hyp = Hypothesis(**prop.hypothesis)
+            # Enforce the scheduler's mode. With one miss left the run ends on a failure,
+            # so a family that has already lost repeatedly is not worth a full training
+            # run - re-ask the planner once (planner-only, ~2k tokens) instead of spending
+            # ~90s of compute and the last of the stall budget on it.
+            bud = self.budget()
+            if bud['mode'] == 'consolidate' and attempt == 0:
+                rec = bud['family_track_record'].get(hyp.family)
+                if rec and rec['n'] >= 2 and rec['mean_gain'] < 0:
+                    self.ledger.log_error(
+                        n, 'scheduler',
+                        f"family '{hyp.family}' has mean gain {rec['mean_gain']:+.4f} over "
+                        f"{rec['n']} attempts and the run ends on the next miss",
+                        're-asked the planner for a consolidating move before spending a '
+                        'training run')
+                    last_failure = {'stage': 'scheduler',
+                                    'error': f"'{hyp.family}' has lost {rec['n']} times "
+                                             f"(mean {rec['mean_gain']:+.4f}). One miss "
+                                             f"ends the run.",
+                                    'hint': 'propose a minimal variation on the incumbent, '
+                                            'or a family with a non-negative track record'}
+                    continue
             res = run_candidate(prop.code, self.fold_name,
                                 workdir=os.path.join(self.workdir, f'cand{n}'))
             if not res['ok']:
@@ -253,6 +294,11 @@ class Kairos:
                 if verbose: print(f"[{n}] CRASH     {hyp.family}")
                 continue
 
+            new_digest = self._digest_for(os.path.join(self.workdir, 'valid_pred.npy'))
+            prev_digest = self.incumbent.get('digest') if self.incumbent else self.base_digest
+            from kairos.kernel.diagnostics import check_prediction
+            hit = check_prediction(getattr(hyp, 'prediction', None) or {},
+                                   prev_digest, new_digest)
             inc = self.incumbent['valid_primary'] if self.incumbent else self.baseline_valid
             delta = ev['valid_primary'] - inc
             gain_findings = self.auditor.check_gain_plausibility(ev['valid_primary'], inc)
@@ -280,6 +326,7 @@ class Kairos:
                         'miss against the stall budget, not a crash')
             out = Outcome(valid_primary=ev['valid_primary'], valid_gauc=ev['valid_gauc'],
                           valid_ndcg=ev['valid_ndcg'], delta_vs_incumbent=delta,
+                          prediction_hit=hit,
                           diagnostics={'seed_std': ev['valid_std'], 'seeds': ev['seeds'],
                                        'audit': [f.as_dict() for f in findings]},
                           seconds=round(time.time() - t0, 1))
@@ -289,12 +336,14 @@ class Kairos:
             if accept:
                 self.incumbent = {'X_path': res['X_path'], 'names': res['names'],
                                   'valid_primary': ev['valid_primary'],
-                                  'digest': {'primary': ev['valid_primary'],
-                                             'GAUC': ev['valid_gauc'],
-                                             'nDCG@5': ev['valid_ndcg'],
-                                             'seed_std': ev['valid_std']}}
+                                  'digest': new_digest or {
+                                      'primary': ev['valid_primary'],
+                                      'GAUC': ev['valid_gauc'],
+                                      'nDCG@5': ev['valid_ndcg'],
+                                      'seed_std': ev['valid_std']}}
             if verbose:
-                print(f"[{n}] {'ACCEPT' if accept else 'reject':9s} {hyp.family:9s} "
+                mark = {True: 'pred:HIT ', False: 'pred:miss', None: '         '}[hit]
+                print(f"[{n}] {'ACCEPT' if accept else 'reject':9s} {hyp.family:9s} {mark} "
                       f"valid {ev['valid_primary']:.4f}+-{ev['valid_std']:.4f} "
                       f"({delta:+.4f})  stall={self.ledger.stall_counter(self.eps)}  "
                       f"{hyp.statement[:48]}")

@@ -23,7 +23,7 @@ from kairos.agent.traincfg import sanitize as _sanitize_hparams
 
 
 def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
-             train_cfg=None, also_test=False):
+             train_cfg=None, also_test=False, cfg_pred_out=None):
     """also_test=True additionally scores the fold's own TEST split and returns
     'test_primary'. Only legal on backtest_* folds, which are not sealed - this must never
     become a path to the official fold's hidden test, so it is refused otherwise."""
@@ -40,6 +40,7 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
         gte, _ = factorize(d.user_id[te])
 
     cfg = train_cfg or {}
+    cfg = dict(cfg); cfg.setdefault('pred_out', cfg_pred_out)
     if cfg.get('mode') == 'scores':
         # X is already the FINAL per-row score - the candidate trained and blended its own
         # model(s) inside build(). No refit; just score it. This is the escape hatch from
@@ -53,6 +54,8 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
               'seeds': [m['primary']], 'best_iter': None}
         if also_test:
             out['test_primary'] = fast_evaluate(gte, d.y_raw[te], s[te])['primary']
+        if cfg.get('pred_out'):
+            np.save(cfg['pred_out'], s[va].astype(np.float32))
         return out
 
     names = [f'f{i}' for i in range(X.shape[1])]
@@ -73,6 +76,7 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
         gorder = np.argsort(g, kind='stable'); gs = g[gorder]
         gsizes = np.diff(np.r_[np.flatnonzero(np.r_[True, gs[1:] != gs[:-1]]), len(gs)])
     out = []
+    va_preds = []
     for sd in seeds:
         p = dict(PARAMS, **hparams, seed=sd)
         if obj == 'lambdarank':
@@ -88,15 +92,18 @@ def evaluate(X, fold_name, seeds=(0, 1, 2), rounds=300, add_dev=True, hz=None,
                 box.update(m); box['iter'] = env.iteration + 1
         ds = (lgb.Dataset(Xtr[gorder], label=ytr[gorder], group=gsizes)
               if obj == 'lambdarank' else lgb.Dataset(Xtr, label=ytr))
-        lgb.train(p, ds, num_boost_round=rounds, valid_sets=[ds],
-                  callbacks=[cbe, lgb.log_evaluation(0)])
+        bst = lgb.train(p, ds, num_boost_round=rounds, valid_sets=[ds],
+                        callbacks=[cbe, lgb.log_evaluation(0)])
         out.append(box)
+        va_preds.append(bst.predict(Xva, num_iteration=box.get('iter')))
     prim = [o['primary'] for o in out]
     result = {'objective': obj,
              'valid_primary': float(np.mean(prim)), 'valid_std': float(np.std(prim)),
              'valid_gauc': float(np.mean([o['GAUC'] for o in out])),
              'valid_ndcg': float(np.mean([o['nDCG@5'] for o in out])),
              'seeds': prim, 'best_iter': int(np.median([o['iter'] for o in out]))}
+    if cfg_pred_out:
+        np.save(cfg_pred_out, np.mean(va_preds, 0).astype(np.float32))
     if also_test:
         best_iter = result['best_iter']
         test_scores = []
@@ -126,6 +133,7 @@ if __name__ == '__main__':
     hz = np.load(cfg['hz_path']) if cfg.get('hz_path') else None
     r = evaluate(X, cfg.get('fold', 'official'), tuple(cfg.get('seeds', (0, 1, 2))),
                  cfg.get('rounds', 300), cfg.get('add_dev', True), hz,
-                 cfg.get('train_cfg'), cfg.get('also_test', False))
+                 cfg.get('train_cfg'), cfg.get('also_test', False),
+                 cfg.get('pred_out'))
     json.dump(r, open(cfg['out'], 'w'))
     print('OK')
