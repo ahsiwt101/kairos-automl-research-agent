@@ -8,8 +8,8 @@ import sys; sys.path.insert(0,'.')
 from kairos.agent.loop import Kairos
 from kairos.agent.proposer import TwoStageProposer
 p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
-k = Kairos(p, max_iters=10, seeds=(0,1), workdir='runs/kairos_live',
-           max_tokens_total=250000)
+k = Kairos(p, max_iters=12, seeds=(0,1,2), workdir='runs/kairos_live',
+           max_tokens_total=300000)
 s = k.run()
 import json
 s['tokens_by_model'] = p.by_model

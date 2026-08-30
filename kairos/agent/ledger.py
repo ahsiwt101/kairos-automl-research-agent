@@ -52,8 +52,8 @@ class Entry:
 
 
 class Ledger:
-    def __init__(self, path='runs/ledger.jsonl', run_name='kairos'):
-        self.path, self.run_name = path, run_name
+    def __init__(self, path='runs/ledger.jsonl', run_name='kairos', baseline=-1e9):
+        self.path, self.run_name, self.baseline = path, run_name, baseline
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.entries = []
         self.tokens_in = self.tokens_out = 0
@@ -105,8 +105,16 @@ class Ledger:
 
         The competition ends a run at 3.  This is therefore not a diagnostic but a hard
         resource: the scheduler must treat consecutive misses as a spendable budget.
+
+        `best_so_far` is seeded from `self.baseline`, not from -inf. Task requirement #1
+        is reproducing the official baseline before iterating, so the run's real starting
+        point is the baseline's validation score, not an arbitrarily low floor. Seeding
+        from -inf would let the agent earn "progress" credit for merely beating its own
+        earlier bad guesses, which lets a run continue - and keep spending tokens - well
+        past the point the stated rule (no +eps improvement in N consecutive iterations)
+        would actually end it.
         """
-        best_so_far, stall = -1e9, 0
+        best_so_far, stall = self.baseline, 0
         for e in self.entries:
             p = e.outcome.valid_primary
             if p != p:

@@ -50,9 +50,10 @@ class Kairos:
         self.auditor = Auditor(self.data, self.fold)
         self.hz = window_horizons(self.data.date.astype(np.int64), OFFICIAL_WINDOWS)
         np.save(os.path.join(workdir, 'hz.npy'), self.hz)
-        self.ledger = Ledger(path=os.path.join(workdir, 'ledger.jsonl'))
-        self.incumbent = None          # dict with X_path, names, valid_primary
         self.baseline_valid = 0.6016
+        self.ledger = Ledger(path=os.path.join(workdir, 'ledger.jsonl'),
+                             baseline=self.baseline_valid)
+        self.incumbent = None          # dict with X_path, names, valid_primary
 
     # ------------------------------------------------------------------ budget
     def budget(self):
