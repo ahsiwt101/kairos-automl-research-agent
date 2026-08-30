@@ -56,7 +56,10 @@ class Kairos:
         np.save(os.path.join(workdir, 'hz.npy'), self.hz)
         self._prewarm_caches()
         self.baseline_valid = 0.6016
-        self.base_digest = None    # diagnostics of the incumbent baseline; set on first use
+        # Diagnostics of the starting incumbent (the official FM baseline). Without this
+        # the FIRST iteration has nothing to compare against, so its prediction scores as
+        # None - and the first iteration is the one most worth scoring.
+        self.base_digest = self._baseline_digest()
         self.ledger = Ledger(path=os.path.join(workdir, 'ledger.jsonl'),
                              baseline=self.baseline_valid)
         self.incumbent = None          # dict with X_path, names, valid_primary
@@ -173,6 +176,18 @@ class Kairos:
                  f"{ev['test_primary']:.4f} gap {gap:+.4f} (threshold {threshold}) | "
                  f"ceiling {ceiling:.3f}, over by {over_ceiling:+.4f}")
         return ok, detail
+
+    def _baseline_digest(self):
+        """Diagnostics of the official baseline, so iteration 1's prediction is checkable."""
+        from kairos.kernel.diagnostics import Diagnostics
+        from kairos.agent.context import make_context
+        try:
+            base = make_context(self.fold_name).baseline_score
+            va = self.fold.idx['valid']
+            return Diagnostics(self.fold, 'valid',
+                               base[va].astype(np.float64)).digest()
+        except Exception:
+            return None
 
     def _digest_for(self, pred_path):
         """Full diagnostics digest for a candidate, from its validation predictions.
