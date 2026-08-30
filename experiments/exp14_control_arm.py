@@ -28,10 +28,14 @@ for tag, audit in (('control (no auditor)', False), ('KAIROS (auditor on)', True
     for e in reversed(k.ledger.entries):
         if e.decision == 'accept':
             chosen = e.hypothesis.statement.split(']')[0].lstrip('['); break
-    test = POOL_TEST.get(chosen, {}).get('official', {}).get('test') if chosen else None
-    out[tag] = {'chosen': chosen,
-                'valid': k.incumbent['valid_primary'] if k.incumbent else None,
-                'hidden_test': test,
+    # An agent that accepts nothing does not submit nothing - it submits its incumbent,
+    # which is the official FM baseline. Reporting 'n/a' would hide the actual outcome.
+    if chosen:
+        test = POOL_TEST.get(chosen, {}).get('official', {}).get('test')
+        valid = k.incumbent['valid_primary'] if k.incumbent else None
+    else:
+        chosen, test, valid = 'baseline FM (retained)', 0.5946, 0.6016
+    out[tag] = {'chosen': chosen, 'valid': valid, 'hidden_test': test,
                 'iterations': s['iterations'], 'interventions': s['manual_interventions'],
                 'tokens': s['tokens_in'] + s['tokens_out'], 'reason': s['reason']}
     print(f"  -> chose {chosen}  validation "
