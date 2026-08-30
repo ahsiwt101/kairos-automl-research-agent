@@ -29,7 +29,7 @@ class Kairos:
     def __init__(self, proposer, fold_name='official', workdir='runs/kairos',
                  eps=0.002, stall_limit=3, max_iters=50, max_seconds=6 * 3600,
                  seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True,
-                 max_tokens_total=400_000):
+                 max_tokens_total=400_000, prior_summary=None):
         self.proposer = proposer
         self.fold_name = fold_name
         self.workdir = workdir
@@ -43,6 +43,10 @@ class Kairos:
         # a pathological repair loop cannot quietly run up a bill, and it is reported in the
         # ledger either way because token usage is a scored criterion.
         self.max_tokens_total = max_tokens_total
+        # Each Kairos instance starts a blank ledger, so without this the agent has no way
+        # to know a strategy already lost in an earlier run - a real research agent should
+        # carry that forward the way a lab notebook would.
+        self.prior_summary = prior_summary
         self.python = python or sys.executable
         os.makedirs(workdir, exist_ok=True)
         self.data = Data()
@@ -168,7 +172,8 @@ class Kairos:
     def step(self, n):
         from kairos.kernel.diagnostics import Diagnostics
         digest = self.incumbent['digest'] if self.incumbent else {
-            'primary': self.baseline_valid, 'note': 'FM baseline, no diagnostics yet'}
+            'primary': self.baseline_valid, 'note': 'FM baseline, no diagnostics yet',
+            **({'prior_run_summary': self.prior_summary} if self.prior_summary else {})}
         last_failure = None
         prev_hyp = None
         for attempt in range(self.repair_attempts + 1):
