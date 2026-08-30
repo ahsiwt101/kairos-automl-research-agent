@@ -41,10 +41,19 @@ ctx.data.user_id          int32 (n,)        ctx.data.video_id   int32 (n,)
 ctx.data.date             int32 (n,) yyyymmdd
 ctx.data.time_ms          int64 (n,) event timestamp
 ctx.data.y_raw            int8  (n,) the long_view label
-ctx.col(name)             any log column: 'tab','duration_ms','hourmin','play_time_ms',
-                          'is_click','is_like','is_follow','is_comment','is_forward'
-ctx.col(name,'vb')        video table: 'author_id','music_id','video_type','upload_type'
-ctx.col(name,'uf')        user table:  'user_active_degree','follow_user_num_range', ...
+ctx.col(name)             any log column, one value PER ROW: 'tab','duration_ms',
+                          'hourmin','play_time_ms','is_click','is_like','is_follow',
+                          'is_comment','is_forward'
+ctx.video_attr(name)      video attribute BROADCAST TO ROWS: 'author_id','music_id',
+                          'video_type','upload_type','video_duration','tag','music_type'
+ctx.user_attr(name)       user attribute broadcast to rows: 'user_active_degree',
+                          'follow_user_num_range','fans_user_num_range','onehot_feat0'...
+                          (constant within a user, so useless alone - cross it with
+                          something item-varying)
+ctx.check(X, names)       validate your matrix before returning; raises the same errors
+                          the harness would, so you can fix them in place
+NOTE ctx.col(name,'vb') is indexed by video_id (~7.5k entries), NOT by row. Never reshape
+it - use ctx.video_attr(name).
 ctx.baseline_score        float32 (n,) the official FM baseline's OUT-OF-SAMPLE score for
                           each row (trained per window on data before it). This is the
                           model you are trying to beat - include it as a feature and build
@@ -316,7 +325,12 @@ CODE_SCHEMA = {"type": "object", "properties": {"code": {"type": "string"}},
 
 PLANNER_SYSTEM = SYSTEM.split('YOU WRITE PYTHON.')[0] + """
 YOU DO NOT WRITE CODE. Decide WHAT to try next and WHY, grounded in the diagnostics you
-are given rather than in general recommendations. Commit to a falsifiable prediction: name
+are given rather than in general recommendations.
+
+BUDGET IS A HARD CONSTRAINT, NOT A HINT. The run ENDS after 3 consecutive iterations
+without a +0.002 validation gain. `budget.misses_before_run_ends` tells you how many
+failures you can still absorb. With 1 remaining, propose a change with a high probability
+of a small gain; with 3, an exploratory swing is affordable. Say which you are doing. Commit to a falsifiable prediction: name
 the diagnostic slice that should move and the direction. Then describe the implementation
 as a short sketch for an engineer - which keys, which aggregates, which columns.
 
