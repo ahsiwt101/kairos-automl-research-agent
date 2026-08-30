@@ -33,7 +33,13 @@ WHAT IS ALREADY KNOWN (do not re-derive):
 - Ensembling is the ONLY intervention measured to work on this benchmark. Seed-averaging
   saturates at 3 seeds. Blending DECORRELATED models (e.g. ctx.refit_score with
   ctx.din_score - different architectures, both at/above baseline) is the highest-value
-  move available; a single model, however tuned, is not.
+  move available; a single model, however tuned, is not. Measured correlations, to choose
+  blend members by: fm/din +0.848 (strong but redundant), expert pairs +0.362 (weak but
+  independent), fm/cf +0.455, fm/mf +0.381. Fusion weights may also use per-member power
+  factors (score = sum of w_m * rank_m ** gamma_m) - but MEASURED, that hurt: a shared
+  gamma raised validation 0.6031 -> 0.6035 while LOWERING held-out test 0.5985 -> 0.5982
+  and widening the gap +0.0046 -> +0.0053. Extra fusion parameters fit validation noise
+  here. Prefer plain linear rank weights.
 - `ctx.mf_factors`, `ctx.auxiliary_signal`, and `ctx.cf_score` are DIFFERENT signals from
   `ctx.baseline_score` and from each other (collaborative filtering, auxiliary feedback,
   and behavioural similarity respectively) - combining several is more likely to help than
@@ -89,6 +95,13 @@ ctx.din_score()           -> float32 (n,) out-of-sample DIN sequence model: targ
                           0.6023 standalone on validation, ABOVE the FM baseline, from an
                           unrelated architecture - so it is worth combining with the FM
                           rather than choosing between them.
+ctx.expert_score(sub)     -> float32 (n,) a model trained on ONE disjoint feature family.
+                          sub in {'context','item','user'}. Individually WEAK (0.5718 /
+                          0.5906 / 0.5357, all below the FM) but mutually decorrelated at
+                          mean Spearman +0.362, versus +0.848 between the FM and DIN.
+                          Fusion is rewarded by decorrelation, not member strength, so
+                          blending several weak-but-independent experts can beat blending
+                          two strong correlated ones. Worth trying alongside refit_score.
 ctx.cf_score()            -> (score, hist_count) float32 (n,) each. IDF-weighted item-item
                           CF: mean similarity between the row's item and this user's
                           frozen-history items. hist_count is a confidence weight (0 = cold
@@ -419,6 +432,53 @@ CODER_SYSTEM = ("You implement ONE feature-construction function exactly as spec
                 + '\nRespond with STRICT JSON only: {"code": "def build(ctx):\\n    ..."}')
 
 
+CRITIC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "coheres": {"type": "boolean"},
+        "reason": {"type": "string"},
+        "better_prediction": {
+            "type": "object",
+            "properties": {
+                "diagnostic": {"type": "string", "enum": [
+                    "gauc", "ndcg", "primary", "inversion_loss_duration",
+                    "inversion_loss_popularity", "headroom_total",
+                    "auc_low_activity_users", "auc_high_activity_users",
+                    "auc_short_lists", "auc_long_lists"]},
+                "direction": {"type": "string", "enum": ["increase", "decrease"]},
+            },
+            "required": ["diagnostic", "direction"],
+            "additionalProperties": False,
+        },
+    },
+    "required": ["coheres", "reason", "better_prediction"],
+    "additionalProperties": False,
+}
+
+CRITIC_SYSTEM = """You audit a research plan for INTERNAL CONSISTENCY. You are not judging
+whether the idea is good - only whether its stated prediction actually follows from its
+stated mechanism.
+
+The plan names a mechanism (why a change should work) and commits to one diagnostic moving
+in one direction. Those must cohere. Two failure modes to catch:
+
+  VACUOUS   the prediction is just "primary/gauc increases", which is true of ANY
+            improvement and so tests nothing about this specific mechanism.
+  MISMATCH  the mechanism implies a different quantity than the one predicted - e.g. a
+            mechanism about duration confounding should move inversion_loss_duration,
+            not auc_long_lists.
+
+Available diagnostics: gauc, ndcg, primary, inversion_loss_duration,
+inversion_loss_popularity, headroom_total, auc_low_activity_users,
+auc_high_activity_users, auc_short_lists, auc_long_lists.
+
+Set coheres=false if the prediction is vacuous or mismatched, and give the sharpest
+diagnostic the mechanism actually implies. If it already coheres, set coheres=true and
+repeat the same prediction back.
+
+Respond with STRICT JSON only."""
+
+
 class TwoStageProposer:
     """Opus plans, Sonnet implements - and repairs never re-plan.
 
@@ -434,7 +494,7 @@ class TwoStageProposer:
 
     def __init__(self, planner='claude-opus-5', coder='claude-sonnet-5',
                  api_key=None, workspace_id=None, plan_effort='high',
-                 code_effort='low', max_tokens=16000):
+                 code_effort='low', max_tokens=16000, critic_enabled=True):
         from anthropic import Anthropic
         ws = workspace_id or os.environ.get('ANTHROPIC_WORKSPACE_ID')
         headers = {'anthropic-workspace-id': ws} if ws else None
@@ -446,6 +506,8 @@ class TwoStageProposer:
         self.tokens_in = self.tokens_out = 0
         self.by_model = {}
         self.last_plan = None
+        self.last_critique = None
+        self.critic_enabled = critic_enabled
 
     def _call(self, model, system, payload, schema, effort):
         msg = self.client.messages.create(
@@ -468,8 +530,34 @@ class TwoStageProposer:
         plan = self._call(self.planner, PLANNER_SYSTEM,
                           {'current_diagnostics': digest, 'history': ledger_summary,
                            'budget': budget}, PLAN_SCHEMA, self.plan_effort)
+        if self.critic_enabled:
+            plan = self._criticise(plan)
         self.last_plan = plan
         return self._implement(plan, last_failure)
+
+    def _criticise(self, plan):
+        """Check the plan's prediction actually follows from its mechanism.
+
+        The agent's measured prediction hit-rate is 0 of 2: it beats the baseline while the
+        diagnostics it claims will move do not move. Some of that is vacuous predictions
+        ("primary increases" is true of any improvement and tests nothing). The critic runs
+        on the CHEAPER model - a consistency check does not need the expensive one - and
+        costs no training runs, only ~1k tokens.
+        """
+        try:
+            verdict = self._call(self.coder, CRITIC_SYSTEM,
+                                 {'mechanism': plan.get('mechanism'),
+                                  'statement': plan.get('statement'),
+                                  'proposed_prediction': plan.get('prediction')},
+                                 CRITIC_SCHEMA, 'low')
+        except Exception:
+            return plan          # a critic failure must never cost the iteration
+        self.last_critique = verdict
+        if not verdict.get('coheres') and verdict.get('better_prediction'):
+            plan = dict(plan)
+            plan['prediction'] = verdict['better_prediction']
+            plan['_critic'] = verdict.get('reason', '')[:300]
+        return plan
 
     def repair(self, hypothesis, failure):
         """Same hypothesis, new code. The planner is deliberately not consulted."""

@@ -55,6 +55,7 @@ class Context:
         self._cf = None
         self._refit = None
         self._din = None
+        self._expert = {}
 
     # convenience accessors so candidates need no knowledge of the cache layout
     def col(self, name, table='log'):
@@ -246,6 +247,32 @@ class Context:
             hz = window_horizons(self.data.date.astype(_np.int64), self.windows)
             self._din = build_din_signal(self.data, self.fold, hz)
         return self._din
+
+    def expert_score(self, subspace):
+        """A model trained on ONE disjoint feature family. subspace in
+        {'context', 'item', 'user'}.
+
+            context   tab, hour, duration, staleness    (no item or user identity)
+            item      item / author / item x tab rates  (no user information)
+            user      user x tab, user x duration rates (no item identity)
+
+        Individually weak - context 0.5718, item 0.5906, user 0.5357 on validation, all
+        below the FM's 0.6005. That is the point. Fusion is rewarded by DECORRELATION, not
+        by member strength, and these are far more decorrelated than the strong models are
+        from each other: mean pairwise Spearman +0.362 between experts, against +0.848
+        between the FM and DIN (which are unrelated architectures that nonetheless both
+        converge on item quality). An expert that cannot see item identity cannot
+        rediscover item quality, so its errors are distributed differently.
+
+        Blending several of these is likely to beat blending two strong, correlated models.
+        """
+        if subspace not in self._expert:
+            from kairos.kernel.expert_signal import build_expert_signal
+            from kairos.kernel.causal import window_horizons
+            import numpy as _np
+            hz = window_horizons(self.data.date.astype(_np.int64), self.windows)
+            self._expert[subspace] = build_expert_signal(self.data, self.fold, hz, subspace)
+        return self._expert[subspace]
 
     def labels_visible(self):
         """Labels with anything past the fold horizon replaced by -1."""
