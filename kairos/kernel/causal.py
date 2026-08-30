@@ -21,6 +21,36 @@ sums - so an arbitrary number of history features costs one lexsort each, not a 
 import numpy as np
 
 
+def _as_key_array(keys, n, who):
+    """Coerce whatever the caller passed into one 1-D grouping key of length n.
+
+    The parameter is named `keys`, so passing a LIST of column arrays is a reasonable
+    reading - and combining several columns into one grouping key is a thing callers
+    genuinely want. Rather than reject it (numpy's own failure here is the useless
+    "object too deep for desired array"), accept it and factorize the tuple, which is
+    exactly what the caller meant. Collision-proof, unlike arithmetic packing.
+    """
+    if isinstance(keys, (list, tuple)) and len(keys) and not np.isscalar(keys[0]):
+        arrs = [np.asarray(k).ravel() for k in keys]
+        if len(arrs) == 1:
+            keys = arrs[0]
+        else:
+            return np.unique(np.stack(arrs, 1), axis=0, return_inverse=True)[1].astype(np.int64)
+    keys = np.asarray(keys)
+    if keys.ndim == 2:                       # (n, k) or (k, n) column stack
+        if keys.shape[0] != n and keys.shape[1] == n:
+            keys = keys.T
+        if keys.shape[1] == 1:
+            keys = keys[:, 0]
+        else:
+            return np.unique(keys, axis=0, return_inverse=True)[1].astype(np.int64)
+    keys = keys.ravel()
+    if len(keys) != n:
+        raise ValueError(f"{who}: `keys` has {len(keys)} entries but there are {n} rows; "
+                         f"it must have exactly one entry per log row.")
+    return keys
+
+
 def causal_prefix(keys, time_ms, y, labeled, tiebreak=None):
     """For each row: counts over all EARLIER rows sharing the same key.
 
@@ -31,11 +61,7 @@ def causal_prefix(keys, time_ms, y, labeled, tiebreak=None):
 
     returns prior_n, prior_labeled, prior_pos  -- all (N,), aligned to the input order.
     """
-    keys = np.asarray(keys)
-    if keys.ndim != 1:
-        raise ValueError(
-            f"causal_prefix: `keys` must be a 1-D array with one entry per log row, got "
-            f"shape {keys.shape}; factorize composite keys into a single 1-D array first.")
+    keys = _as_key_array(keys, len(np.asarray(time_ms)), 'causal_prefix')
     n = len(keys)
     tb = np.arange(n) if tiebreak is None else tiebreak
     order = np.lexsort((tb, time_ms, keys))
@@ -154,19 +180,8 @@ def frozen_prefix(keys, date, y, labeled, horizon_per_row):
     way a periodically-retrained production model actually sees the world.  Passing a
     per-row horizon lets train, valid and test all be built under one rule.
     """
-    keys = np.asarray(keys); date = np.asarray(date).astype(np.int64)
-    # Shape errors here surface deep inside numpy as "object too deep for desired array",
-    # which tells a caller (human or model) nothing. Fail at the boundary instead.
-    if keys.ndim != 1:
-        raise ValueError(
-            f"frozen_prefix: `keys` must be a 1-D array with one entry per log row, got "
-            f"shape {keys.shape}. To combine several columns into one key, factorize the "
-            f"pair first, e.g. "
-            f"np.unique(np.stack([a, b], 1), axis=0, return_inverse=True)[1] - "
-            f"do NOT pass a list of arrays.")
-    if date.ndim != 1 or len(date) != len(keys):
-        raise ValueError(f"frozen_prefix: `date` must be 1-D and the same length as `keys` "
-                         f"({len(keys)}), got shape {date.shape}")
+    date = np.asarray(date).astype(np.int64)
+    keys = _as_key_array(keys, len(date), 'frozen_prefix')
     n = len(keys)
     uk, kid = np.unique(keys, return_inverse=True)
     kid = kid.astype(np.int64)
