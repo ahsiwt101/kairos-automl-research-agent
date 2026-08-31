@@ -123,6 +123,28 @@ Row order is also byte-identical to `data.load()` on all three splits — checke
 submission alignment is positional and `(user_id, video_id)` is not unique (3.06% of test
 rows are repeated pairs).
 
+## Rules compliance
+
+Judging is by code review of the pipeline and run logs, so each rule is listed with the
+code that enforces it and the test that pins it.
+
+| rule | how this repo satisfies it | pinned by |
+|---|---|---|
+| Never train on the test split or use its labels — including for model selection, early stopping, threshold tuning, or feature statistics | `also_test` is **hard-refused** on the official fold (`evaluate_candidate.py` raises); training, early stopping and candidate acceptance all read validation only; test-row features use horizon 20220428, so no test label enters any feature | `verify_train_split_only.py` |
+| Training data is the train split only (FAQ 2.9.2) | every trainer is clamped to `date <= 20220421`; the one ambiguous case is an explicit flag defaulting to strict — see [`reports/DATA_DISCIPLINE.md`](reports/DATA_DISCIPLINE.md) | `verify_train_split_only.py` |
+| `log_random` may not be training data (FAQ 2.9.2.1) | never loaded by any training path | — |
+| KuaiRand-1k/27k may not be auxiliary training data for Pure (FAQ 2.9.2.2) | enforced structurally: every signal cache is keyed by variant and a cached array of the wrong length is **refused**, so a 1k signal cannot enter a Pure run even by mistake | `verify_variant_isolation.py` |
+| No external training data or pretrained weights | nothing outside KuaiRand is read; no pretrained weights | — |
+| Convergence: ε = 0.002, N = 3; crashed iterations neither advance nor reset the window (FAQ 2.9.1) | implemented in `Ledger.stall_counter`; crashes are skipped, not counted as misses | `verify_stall_counter.py` |
+| Caps: 50 iterations, 6 h wall-clock | `max_iters` and `max_seconds` in `Kairos`; runs converge on the ε/N rule long before either | `verify_stall_counter.py` |
+| Submission is the validation-best checkpoint, scored once | selection reads `valid_primary` only; every consultation of the test split is appended to `runs/scorer_audit.log` with its reason | audit log |
+
+**On the §2.3 metric line.** §2.3 lists "NDCG@10 / Recall@50, click = positive". This
+contradicts §2.4, §2.6 and Appendix A.4, which all specify **GAUC / nDCG@5 on `long_view`**,
+and A.4 notes Recall@50 is 0.999+ for every model including random scoring. §2.4 states the
+task is "pinned in the Starter Kit", and the shipped `evaluate.py` computes GAUC / nDCG@5.
+We follow the Starter Kit.
+
 ## Limitations, honestly
 
 - **Absolute gains are modest.** The scored improvement comes mostly from ensembling and

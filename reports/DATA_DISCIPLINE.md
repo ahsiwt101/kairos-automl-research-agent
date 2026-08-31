@@ -19,19 +19,45 @@ The downstream model is constructed as `lgb.Dataset(Xtr, label=ytr)` where `Xtr 
 callback, which picks the boosting iteration that maximises the validation metric. Test rows
 are scored by the fitted model and never contribute a gradient.
 
-## The one place validation labels legitimately train a model
+## Training data: the train split only (with one flag, and the argument for it)
 
-`ctx.refit_score()` (`kairos/kernel/refit_signal.py`) is deliberately asymmetric:
+Organizer FAQ 2.9.2 states:
 
-    train / valid rows -> prediction from a model trained on TRAIN ONLY
-    test rows          -> prediction from a model trained on TRAIN + VALIDATION
+> "training data is the train split only: date 20220408-20220421"
 
-This is not a leak, and the asymmetry is the point. A validation row must be scored by a
-model that has not seen validation labels, or every weight fitted against it is optimistic.
-A test row, at submission time, may legitimately be scored by a model that used everything
-available before the test window opened - that is simply using the data one actually has.
-Collapsing the two cases in either direction is what causes trouble, so the distinction is
-enforced inside the primitive rather than left to each candidate to remember.
+Every model in this project therefore fits on train-split rows only. That was **not**
+originally true, and the bug is worth recording because it is subtle: three signals
+(`baseline_score`, `cf_score`, `mf_factors`) used a frozen window's HORIZON as their fit
+set. Horizon and training cut-off are different quantities. A window covering the test
+period legitimately aggregates labels to 20220428 - FAQ 2.2 permits developing on "the
+training split and the public validation feedback", so validation *feature statistics* are
+fine - but a model scoring that window may still only FIT on rows to 20220421. The
+unclamped horizon admitted **124,909 validation rows** into training.
+`experiments/verify_train_split_only.py` pins the separation and proves the clamp is
+load-bearing rather than decorative.
+
+### The one genuinely ambiguous case, exposed as a flag
+
+`ctx.refit_score()` can refit on train+validation to score TEST rows - worth a replicated
++0.0020 / +0.0022 on two independent backtest folds (exp22). Whether the rules permit it is
+not obvious:
+
+| supports permitting it | supports forbidding it |
+|---|---|
+| 2.3 out-of-scope: "no hidden-test access during development **(train + validation only)**" | 2.9.2: "training data is the train split only" |
+| 2.4: "teams **develop on train + validation only**" | judging is by code review, and the call is visible in one function |
+| 2.9.3 disqualifies "a pipeline that touches **test** labels" - this touches none | |
+| 2.9.2's own rationale forbids `log_random` because it "covers both the validation and the test window ... injects in-period information about the scored rows and breaks the temporal split". Validation closes before the test window opens, so neither clause reaches it. | |
+
+Rather than decide quietly, this is `STRICT_TRAIN_SPLIT` in `kairos/kernel/dataset.py`,
+**defaulting to the strict reading**. The permissive setting is one environment variable
+away, the two cache separately, and the run log records which produced any given
+submission.
+
+One property makes this safe to leave open: the flag changes **only test-row predictions**.
+The clamp binds only where a window's horizon exceeds 20220421, which is true of exactly
+one window - the test window. No validation number moves, so the agent's search, its
+accept/reject decisions and its validation-best checkpoint are identical either way.
 
 ## Feature construction is horizon-bounded, not merely split-bounded
 
