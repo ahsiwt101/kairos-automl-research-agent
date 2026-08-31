@@ -1,0 +1,20 @@
+{
+  "uniform over good signals": {
+    "valid": 0.601644301574046,
+    "test": 0.5948738447998088,
+    "weights": {
+      "fm10": 0.333,
+      "gb_frozen": 0.333,
+      "wt_binary": 0.333
+    }
+  },
+  "coordinate ascent on valid": {
+    "valid": 0.6042452436908123,
+    "test": 0.5974107563020721,
+    "weights": {
+      "fm10": 0.632,
+      "gb_frozen": 0.316,
+      "mf": 0.053
+    }
+  }
+}

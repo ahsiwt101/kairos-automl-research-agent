@@ -1,0 +1,8 @@
+  train-only seed0: valid 0.6015 (best epoch 7)
+  train-only seed1: valid 0.6025 (best epoch 7)
+  train-only seed2: valid 0.6021 (best epoch 7)
+epoch count carried to refit: 7
+  refit seed0: trained on train+valid for 7 epochs
+  refit seed1: trained on train+valid for 7 epochs
+  refit seed2: trained on train+valid for 7 epochs
+saved: fmT_*_va.npy (train-only, for weights) and fmR_*_te.npy (refit, for test)

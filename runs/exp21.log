@@ -1,0 +1,25 @@
+training 10 FM seeds (tau=14, the validation-selected variant)...
+
+FM seeds averaged         valid
+   1 seed(s)              0.6013
+   2 seed(s)              0.6022
+   3 seed(s)              0.6026
+   5 seed(s)              0.6027
+  10 seed(s)              0.6027
+
+signal          valid
+  fm10         0.6027
+  wt_binary    0.5994
+  gb_frozen    0.5992
+  item_pop     0.5805
+  cf           0.5511
+  mf           0.5396
+
+weighting scheme                      valid     test      gap
+--------------------------------------------------------------
+uniform over good signals            0.6016   0.5949  +0.0068
+   weights: {'fm10': 0.333, 'gb_frozen': 0.333, 'wt_binary': 0.333}
+coordinate ascent on valid           0.6042   0.5974  +0.0068
+   weights: {'fm10': 0.632, 'gb_frozen': 0.316, 'mf': 0.053}
+
+reference: FM baseline test 0.5946 | previous best ensemble test 0.5976

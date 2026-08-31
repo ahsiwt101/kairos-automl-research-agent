@@ -1,0 +1,15 @@
+base (context + item quality)      0.5969 +-0.0005
+
+added on top of base                valid     std  marginal
+------------------------------------------------------------
+user x author  (6,510 vals)        0.5975  0.0003   +0.0006
+user x item    (7,583 vals)        0.5972  0.0001   +0.0003
+user x music   (6,283 vals)        0.5972  0.0005   +0.0003
+user x TAG       (111 vals)        0.5961  0.0001   -0.0008
+user x upload_ty  (14 vals)        0.5963  0.0003   -0.0006
+user x durbucket  (10 vals)        0.5957  0.0004   -0.0012
+user x video_ty    (3 vals)        0.5985  0.0003   +0.0016
+video age (freshness)              0.5969  0.0001   -0.0000
+tag rate (item-side)               0.5975  0.0003   +0.0006
+
+best single addition: user x video_ty    (3 vals) (+0.0016)

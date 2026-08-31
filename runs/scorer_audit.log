@@ -1,0 +1,60 @@
+{"t": "23:29:16", "split": "official/test", "call": 1, "reason": "exp01 parity check", "primary": 0.594767}
+{"t": "23:29:58", "split": "official/test", "call": 1, "reason": "exp02 ablation bce/user_week", "primary": 0.594767}
+{"t": "23:30:15", "split": "official/test", "call": 2, "reason": "exp02 ablation bpr/user_week", "primary": 0.594701}
+{"t": "23:30:36", "split": "official/test", "call": 3, "reason": "exp02 ablation bpr_gauc/user_week", "primary": 0.594971}
+{"t": "23:30:56", "split": "official/test", "call": 4, "reason": "exp02 ablation listnet/user_week", "primary": 0.591707}
+{"t": "23:31:17", "split": "official/test", "call": 5, "reason": "exp02 ablation lambda_ndcg/user_week", "primary": 0.587409}
+{"t": "23:31:41", "split": "official/test", "call": 6, "reason": "exp02 ablation primary/user_week", "primary": 0.595424}
+{"t": "23:35:51", "split": "official/test", "call": 1, "reason": "exp04 lgb-binary", "primary": 0.59038}
+{"t": "23:36:35", "split": "official/test", "call": 2, "reason": "exp04 lgb-lambdarank/user_day", "primary": 0.574851}
+{"t": "23:37:14", "split": "official/test", "call": 3, "reason": "exp04 lgb-lambdarank/user", "primary": 0.584883}
+{"t": "23:42:36", "split": "official/test", "call": 1, "reason": "exp06 frozen / binary", "primary": 0.589838}
+{"t": "23:43:21", "split": "official/test", "call": 2, "reason": "exp06 frozen / lambdarank user_day", "primary": 0.591795}
+{"t": "23:44:18", "split": "official/test", "call": 3, "reason": "exp06 frozen / lambdarank user", "primary": 0.589353}
+{"t": "23:49:21", "split": "official/test", "call": 1, "reason": "verify_baseline torch seed0", "primary": 0.594767}
+{"t": "23:49:46", "split": "official/test", "call": 2, "reason": "verify_baseline torch seed1", "primary": 0.596061}
+{"t": "23:50:05", "split": "official/test", "call": 3, "reason": "verify_baseline torch seed2", "primary": 0.595275}
+{"t": "23:50:23", "split": "official/test", "call": 4, "reason": "verify_baseline torch seed3", "primary": 0.59361}
+{"t": "23:50:44", "split": "official/test", "call": 5, "reason": "verify_baseline torch seed4", "primary": 0.595216}
+{"t": "23:54:19", "split": "official/test", "call": 1, "reason": "exp07c FM 3-seed", "primary": 0.596264}
+{"t": "23:54:19", "split": "official/test", "call": 2, "reason": "exp07c GBDT 3-seed", "primary": 0.591756}
+{"t": "23:54:19", "split": "official/test", "call": 3, "reason": "exp07c fusion", "primary": 0.597457}
+{"t": "23:58:38", "split": "official/test", "call": 1, "reason": "exp09 binary long_view", "primary": 0.59174}
+{"t": "23:59:51", "split": "official/test", "call": 2, "reason": "exp09 regress log play_time", "primary": 0.560516}
+{"t": "00:01:17", "split": "official/test", "call": 3, "reason": "exp09 huber log play_time", "primary": 0.575412}
+{"t": "00:04:10", "split": "official/test", "call": 1, "reason": "exp10 gb_binary", "primary": 0.591641}
+{"t": "00:05:37", "split": "official/test", "call": 2, "reason": "exp10 gb_d2q", "primary": 0.584555}
+{"t": "00:05:38", "split": "official/test", "call": 3, "reason": "exp10 ensemble", "primary": 0.596251}
+{"t": "00:07:19", "split": "official/test", "call": 1, "reason": "exp11 pool causal_all", "primary": 0.591277}
+{"t": "00:07:24", "split": "official/test", "call": 1, "reason": "exp13 ensemble", "primary": 0.597623}
+{"t": "00:08:17", "split": "official/test", "call": 2, "reason": "exp11 pool causal_user", "primary": 0.590451}
+{"t": "00:09:22", "split": "official/test", "call": 3, "reason": "exp11 pool causal_ui", "primary": 0.590749}
+{"t": "00:10:22", "split": "official/test", "call": 4, "reason": "exp11 pool causal_item", "primary": 0.590978}
+{"t": "00:11:47", "split": "official/test", "call": 5, "reason": "exp11 pool frozen_all", "primary": 0.59073}
+{"t": "00:12:44", "split": "official/test", "call": 6, "reason": "exp11 pool frozen_user", "primary": 0.59079}
+{"t": "00:13:46", "split": "official/test", "call": 7, "reason": "exp11 pool frozen_ui", "primary": 0.591015}
+{"t": "00:14:44", "split": "official/test", "call": 8, "reason": "exp11 pool frozen_item", "primary": 0.589689}
+{"t": "00:15:50", "split": "official/test", "call": 9, "reason": "exp11 pool frozen_nouser", "primary": 0.59004}
+{"t": "00:16:55", "split": "official/test", "call": 10, "reason": "exp11 pool causal_nouser", "primary": 0.588452}
+{"t": "00:47:06", "split": "official/test", "call": 1, "reason": "exp15 causal_all_bin", "primary": 0.591591}
+{"t": "00:48:15", "split": "official/test", "call": 2, "reason": "exp15 causal_ui_bin", "primary": 0.591154}
+{"t": "00:49:41", "split": "official/test", "call": 3, "reason": "exp15 causal_all_lmr", "primary": 0.578966}
+{"t": "00:50:46", "split": "official/test", "call": 4, "reason": "exp15 causal_ui_lmr", "primary": 0.580185}
+{"t": "00:51:41", "split": "official/test", "call": 5, "reason": "exp15 causal_user_lmr", "primary": 0.577998}
+{"t": "00:53:14", "split": "official/test", "call": 6, "reason": "exp15 frozen_all_bin", "primary": 0.590971}
+{"t": "00:54:28", "split": "official/test", "call": 7, "reason": "exp15 frozen_ui_bin", "primary": 0.5912}
+{"t": "00:55:43", "split": "official/test", "call": 8, "reason": "exp15 frozen_all_lmr", "primary": 0.592106}
+{"t": "00:56:37", "split": "official/test", "call": 9, "reason": "exp15 frozen_ui_lmr", "primary": 0.591984}
+{"t": "00:57:42", "split": "official/test", "call": 10, "reason": "exp15 frozen_item_bin", "primary": 0.58969}
+{"t": "12:17:12", "split": "official/test", "call": 1, "reason": "exp16 refit", "primary": 0.590976}
+{"t": "12:17:12", "split": "official/test", "call": 2, "reason": "exp16 refit", "primary": 0.592511}
+{"t": "12:45:52", "split": "official/test", "call": 1, "reason": "fm_score feasibility probe", "primary": 0.598385}
+{"t": "12:46:28", "split": "official/test", "call": 2, "reason": "fm_score feasibility probe", "primary": 0.596968}
+{"t": "20:25:13", "split": "official/test", "call": 1, "reason": "exp21 uniform over good signals", "primary": 0.594874}
+{"t": "20:25:13", "split": "official/test", "call": 2, "reason": "exp21 coordinate ascent on valid", "primary": 0.597411}
+{"t": "20:46:58", "split": "official/test", "call": 1, "reason": "exp22 fm refit", "primary": 0.596264}
+{"t": "20:46:58", "split": "official/test", "call": 2, "reason": "exp22 fm refit", "primary": 0.59704}
+{"t": "21:55:56", "split": "official/test", "call": 1, "reason": "phase1 refit_score check", "primary": 0.597015}
+{"t": "22:05:42", "split": "official/test", "call": 1, "reason": "FINAL agent-produced candidate", "primary": 0.598844}
+{"t": "23:43:30", "split": "official/test", "call": 1, "reason": "exp27 linear rank fusion", "primary": 0.598499}
+{"t": "23:43:30", "split": "official/test", "call": 2, "reason": "exp27 power-rank fusion (gamma=0.75)", "primary": 0.598153}

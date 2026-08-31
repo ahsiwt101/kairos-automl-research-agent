@@ -1,0 +1,29 @@
+=== individual expert strength (validation) ===
+  expert[context] seed0: valid 0.5715
+  expert[context] seed1: valid 0.5713
+  expert[context]  0.5718
+  expert[item] seed0: valid 0.5903
+  expert[item] seed1: valid 0.5906
+  expert[item]  0.5906
+  expert[user] seed0: valid 0.5361
+  expert[user] seed1: valid 0.5362
+  expert[user]  0.5357
+  (reference) fm   0.6005
+  (reference) din  0.6023
+
+=== pairwise Spearman (lower = better for fusion) ===
+  x_item     vs x_user     +0.279  <- expert pair
+  x_user     vs din        +0.284
+  x_context  vs x_user     +0.315  <- expert pair
+  x_user     vs fm         +0.344
+  x_context  vs x_item     +0.492  <- expert pair
+  x_context  vs fm         +0.509
+  x_context  vs din        +0.529
+  x_item     vs din        +0.775
+  x_item     vs fm         +0.778
+  fm         vs din        +0.848  <- the number to beat
+
+mean expert-pair correlation : +0.362
+FM/DIN correlation           : +0.848
+
+VERDICT: GO - experts are more decorrelated

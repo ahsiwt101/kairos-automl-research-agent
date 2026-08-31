@@ -1,0 +1,1 @@
+{"iteration": 3, "kind": "scheduler", "detail": "family 'ensemble' has mean gain -0.0035 over 2 attempts and the run ends on the next miss", "recovery": "re-asked the planner for a consolidating move before spending a training run", "t": "23:52:26"}

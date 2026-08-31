@@ -1,0 +1,12 @@
+variant                         valid      std
+------------------------------------------------
+A baseline (as shipped)        0.5987   0.0002
+B tab target-encoded           0.5986   0.0001
+C tab categorical              0.5988   0.0001
+D both                         0.5982   0.0003
+
+best on validation: C tab categorical (0.5988 vs A 0.5987, delta +0.0001)
+
+=== backtest confirmation of C vs A on backtest_a ===
+  A baseline (as shipped)      valid 0.5928  test 0.5931  gap -0.0004
+  C tab categorical            valid 0.5928  test 0.5935  gap -0.0007

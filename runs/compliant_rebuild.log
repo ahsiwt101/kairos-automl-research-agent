@@ -1,0 +1,8 @@
+  window 20220411-20220413 (horizon 20220410): fit 280,544 rows, scored 539,622
+  window 20220414-20220416 (horizon 20220413): fit 820,166 rows, scored 191,048
+  window 20220417-20220419 (horizon 20220416): fit 1,011,214 rows, scored 89,026
+  window 20220420-20220421 (horizon 20220419): fit 1,100,240 rows, scored 40,872
+  window 20220422-20220428 (horizon 20220421): fit 1,141,112 rows, scored 124,909
+  window 20220429-20220508 (horizon 20220428): fit 1,141,112 rows, scored 170,588
+  baseline_score  valid primary 0.6005
+  refit_score     valid primary 0.6027

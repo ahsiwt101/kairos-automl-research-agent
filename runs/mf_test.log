@@ -1,0 +1,9 @@
+  MF window 20220411-20220412 (horizon 20220410): 95,388 positives, 27,285x7,583 matrix -> scored 444,911 rows
+  MF window 20220413-20220414 (horizon 20220412): 243,402 positives, 27,285x7,583 matrix -> scored 165,963 rows
+  MF window 20220415-20220417 (horizon 20220414): 296,202 positives, 27,285x7,583 matrix -> scored 163,819 rows
+  MF window 20220418-20220421 (horizon 20220417): 356,606 positives, 27,285x7,583 matrix -> scored 85,875 rows
+  MF window 20220422-20220428 (horizon 20220421): 384,121 positives, 27,285x7,583 matrix -> scored 124,909 rows
+  MF window 20220429-20220508 (horizon 20220428): 423,253 positives, 27,285x7,583 matrix -> scored 170,588 rows
+built in 14s  U(1436609, 16) V(1436609, 16)
+nonzero U rows: 74.4%  nonzero V rows: 65.7%
+raw MF dot-product on valid: primary 0.5398 (random floor ~0.475)

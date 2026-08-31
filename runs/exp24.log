@@ -1,0 +1,23 @@
+feature matrix: (1141112, 50)
+
+config                                                              valid     std
+----------------------------------------------------------------------------------
+DEFAULT (used in every experiment so far)                          0.6030  0.0002
+lr0.12 lv127 md200 ff0.42 bg0.51 l2=0.0                            0.6016  0.0004
+lr0.02 lv255 md500 ff0.76 bg0.86 l2=5.0                            0.6026  0.0003
+lr0.08 lv63 md200 ff0.89 bg0.5 l2=5.0                              0.6021  0.0003
+lr0.03 lv255 md200 ff0.84 bg0.59 l2=0.0                            0.6020  0.0001
+lr0.02 lv255 md50 ff0.58 bg0.71 l2=1.0                             0.6030  0.0005
+lr0.05 lv15 md50 ff0.8 bg0.82 l2=0.0                               0.6025  0.0000
+lr0.03 lv127 md500 ff1.0 bg0.99 l2=1.0                             0.6028  0.0001
+lr0.03 lv127 md1000 ff0.81 bg0.69 l2=1.0                           0.6030  0.0001 <-- best
+lr0.12 lv15 md200 ff0.72 bg0.66 l2=5.0                             0.6022  0.0007
+lr0.05 lv63 md500 ff0.96 bg0.68 l2=5.0                             0.6033  0.0001 <-- best
+lr0.08 lv63 md100 ff0.76 bg0.67 l2=0.0                             0.6024  0.0003
+lr0.08 lv31 md100 ff0.54 bg0.81 l2=5.0                             0.6024  0.0004
+lr0.02 lv15 md100 ff0.87 bg0.62 l2=5.0                             0.6020  0.0001
+lr0.08 lv255 md50 ff0.6 bg0.58 l2=0.0                              0.6009  0.0004
+
+swept 14 configs in 1832s
+best 0.6033 vs default 0.6030  (+0.0003)
+best config: {'learning_rate': 0.05, 'num_leaves': 63, 'min_data_in_leaf': 500, 'feature_fraction': 0.96, 'bagging_fraction': 0.68, 'bagging_freq': 1, 'lambda_l2': 5.0}

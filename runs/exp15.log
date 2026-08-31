@@ -1,0 +1,32 @@
+official    causal_all_bin    valid 0.7170 test 0.5916 gap +0.1254  97s
+official    causal_ui_bin     valid 0.7173 test 0.5912 gap +0.1261  70s
+official    causal_all_lmr    valid 0.7330 test 0.5790 gap +0.1540  86s
+official    causal_ui_lmr     valid 0.7325 test 0.5802 gap +0.1523  65s
+official    causal_user_lmr   valid 0.7298 test 0.5780 gap +0.1518  55s
+official    frozen_all_bin    valid 0.5987 test 0.5910 gap +0.0077  93s
+official    frozen_ui_bin     valid 0.5989 test 0.5912 gap +0.0077  73s
+official    frozen_all_lmr    valid 0.5973 test 0.5921 gap +0.0052  75s
+official    frozen_ui_lmr     valid 0.5969 test 0.5920 gap +0.0049  54s
+official    frozen_item_bin   valid 0.5966 test 0.5897 gap +0.0069  66s
+backtest_a  causal_all_bin    valid 0.7156 test 0.5916 gap +0.1240  95s
+backtest_a  causal_ui_bin     valid 0.7162 test 0.5915 gap +0.1247  69s
+backtest_a  causal_all_lmr    valid 0.7316 test 0.5883 gap +0.1434  79s
+backtest_a  causal_ui_lmr     valid 0.7317 test 0.5854 gap +0.1463  55s
+backtest_a  causal_user_lmr   valid 0.7290 test 0.5853 gap +0.1437  51s
+backtest_a  frozen_all_bin    valid 0.5928 test 0.5934 gap -0.0005  87s
+backtest_a  frozen_ui_bin     valid 0.5915 test 0.5927 gap -0.0013  65s
+backtest_a  frozen_all_lmr    valid 0.5921 test 0.5916 gap +0.0005  71s
+backtest_a  frozen_ui_lmr     valid 0.5920 test 0.5915 gap +0.0005  52s
+backtest_a  frozen_item_bin   valid 0.5913 test 0.5909 gap +0.0004  59s
+backtest_c  causal_all_bin    valid 0.7109 test 0.5681 gap +0.1428  92s
+backtest_c  causal_ui_bin     valid 0.7110 test 0.5684 gap +0.1426  68s
+backtest_c  causal_all_lmr    valid 0.7280 test 0.5617 gap +0.1664  2424s
+backtest_c  causal_ui_lmr     valid 0.7274 test 0.5596 gap +0.1678  8961s
+backtest_c  causal_user_lmr   valid 0.7254 test 0.5596 gap +0.1658  6751s
+backtest_c  frozen_all_bin    valid 0.5921 test 0.5699 gap +0.0222  7217s
+backtest_c  frozen_ui_bin     valid 0.5926 test 0.5680 gap +0.0246  6634s
+backtest_c  frozen_all_lmr    valid 0.5917 test 0.5686 gap +0.0231  3707s
+backtest_c  frozen_ui_lmr     valid 0.5915 test 0.5680 gap +0.0234  3679s
+backtest_c  frozen_item_bin   valid 0.5908 test 0.5653 gap +0.0255  63s
+
+saved runs/exp15_selection_v2.json

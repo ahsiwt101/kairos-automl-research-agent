@@ -1,0 +1,13 @@
+  window 20220411-20220413 (horizon 20220410): fit 1,162,871 rows, scored 1,062,093
+  window 20220414-20220416 (horizon 20220413): fit 2,224,964 rows, scored 1,077,387
+  window 20220417-20220419 (horizon 20220416): fit 3,302,351 rows, scored 1,068,598
+  window 20220420-20220421 (horizon 20220419): fit 4,370,949 rows, scored 685,035
+  window 20220422-20220428 (horizon 20220421): fit 5,055,984 rows, scored 2,524,980
+  window 20220429-20220508 (horizon 20220428): fit 7,580,964 rows, scored 4,132,081
+Traceback (most recent call last):
+  File "<string>", line 14, in <module>
+    print(f'FM {split}: primary {m["primary"]:.4f} gauc {m["gauc"]:.4f} ndcg {m["ndcg"]:.4f}',flush=True)
+                                                         ~^^^^^^^^
+KeyError: 'gauc'
+FM valid: primary 0.5778  GAUC 0.6406  nDCG@5 0.5151  users 978
+FM test : primary 0.5856  GAUC 0.6428  nDCG@5 0.5285  users 997

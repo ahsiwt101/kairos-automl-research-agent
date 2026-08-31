@@ -1,0 +1,56 @@
+##### exp12: grading selection rules on the objective-axis pool #####
+pool: runs/exp15_selection_v2.json
+
+candidate           off.valid  off.test      gap  transfer    stab   robust
+------------------------------------------------------------------------
+causal_all_lmr         0.7330    0.5790  +0.1540    0.5750  0.0133   0.5600
+causal_ui_lmr          0.7325    0.5802  +0.1523    0.5725  0.0129   0.5579
+causal_user_lmr        0.7298    0.5780  +0.1518    0.5724  0.0128   0.5579
+causal_ui_bin          0.7173    0.5912  +0.1261    0.5799  0.0115   0.5667
+causal_all_bin         0.7170    0.5916  +0.1254    0.5799  0.0117   0.5664
+frozen_ui_bin          0.5989    0.5912  +0.0077    0.5804  0.0124   0.5663
+frozen_all_bin         0.5987    0.5910  +0.0077    0.5817  0.0117   0.5682
+frozen_all_lmr         0.5973    0.5921  +0.0052    0.5801  0.0115   0.5669
+frozen_ui_lmr          0.5969    0.5920  +0.0049    0.5798  0.0117   0.5663
+frozen_item_bin        0.5966    0.5897  +0.0069    0.5781  0.0128   0.5636
+
+rule                       picks            hidden-test obtained    regret
+--------------------------------------------------------------------------
+greedy (argmax validation) causal_all_lmr                    0.5790    0.0131
+transfer (backtest mean)   frozen_all_bin                    0.5910    0.0011
+robust (transfer-corrected) frozen_all_bin                    0.5910    0.0011
+oracle (unattainable)      frozen_all_lmr                    0.5921    0.0000
+
+baseline FM hidden test: 0.5946
+greedy vs robust on hidden test: 0.5790 -> 0.5910 (+0.0120)
+
+rank correlation with hidden test over the pool:
+  official validation : -0.612
+  backtest transfer   : +0.661
+
+##### exp16: is refitting on train+valid worth it? #####
+backtest_a   rounds= 281  train-only 0.5935  refit(+108,158 rows) 0.5936  delta +0.0000
+backtest_c   rounds= 191  train-only 0.5698  refit(+108,040 rows) 0.5698  delta +0.0000
+official     rounds= 261  train-only 0.5910  refit(+124,909 rows) 0.5925  delta +0.0015
+
+backtest folds say refitting is worth +0.0000 on average (+0.0000, +0.0000)
+official fold shown for reference; the DECISION is made on the backtests only.
+
+##### exp14: control-arm ablation (auditor on vs off) #####
+
+########## control (no auditor) ##########
+Traceback (most recent call last):
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/experiments/exp14_control_arm.py", line 19, in <module>
+    s = k.run()
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/agent/loop.py", line 141, in run
+    prop, hyp, res, findings, failure, attempts = self.step(n)
+                                                  ~~~~~~~~~^^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/agent/loop.py", line 93, in step
+    prop = self.proposer.propose(digest, self.ledger.summary(), self.budget(),
+                                 last_failure)
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/agent/proposer_pool.py", line 51, in propose
+    name, mode, fams, obj, grp = self.pool[self.i]
+                                 ~~~~~~~~~^^^^^^^^
+IndexError: list index out of range
+
+##### ALL DONE #####

@@ -1,0 +1,12 @@
+item-quality estimator                valid     std   vs base
+--------------------------------------------------------------
+unweighted                           0.5966  0.0004   +0.0000
+unweighted      +hier                0.5966  0.0004   +0.0000
+decay H=14d                          0.5964  0.0004   -0.0002
+decay H=14d     +hier                0.5968  0.0005   +0.0002
+decay H=7d                           0.5964  0.0001   -0.0003
+decay H=7d      +hier                0.5966  0.0003   -0.0000
+decay H=3d                           0.5951  0.0000   -0.0015
+decay H=3d      +hier                0.5950  0.0003   -0.0017
+
+best: decay H=14d     +hier (0.5968, +0.0002 vs unweighted+global)

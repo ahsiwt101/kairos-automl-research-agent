@@ -1,0 +1,32 @@
+official    causal_all     valid 0.7164 test 0.5913 gap +0.1252  91s
+official    causal_user    valid 0.7118 test 0.5905 gap +0.1213  58s
+official    causal_ui      valid 0.7168 test 0.5907 gap +0.1260  65s
+official    causal_item    valid 0.5975 test 0.5910 gap +0.0066  60s
+official    frozen_all     valid 0.5987 test 0.5907 gap +0.0079  84s
+official    frozen_user    valid 0.5978 test 0.5908 gap +0.0070  57s
+official    frozen_ui      valid 0.5988 test 0.5910 gap +0.0078  62s
+official    frozen_item    valid 0.5966 test 0.5897 gap +0.0069  59s
+official    frozen_nouser  valid 0.5952 test 0.5900 gap +0.0052  66s
+official    causal_nouser  valid 0.5995 test 0.5885 gap +0.0111  65s
+backtest_a  causal_all     valid 0.7156 test 0.5915 gap +0.1241  84s
+backtest_a  causal_user    valid 0.7111 test 0.5907 gap +0.1205  58s
+backtest_a  causal_ui      valid 0.7158 test 0.5915 gap +0.1243  64s
+backtest_a  causal_item    valid 0.5926 test 0.5915 gap +0.0011  54s
+backtest_a  frozen_all     valid 0.5928 test 0.5934 gap -0.0007  82s
+backtest_a  frozen_user    valid 0.5916 test 0.5928 gap -0.0012  52s
+backtest_a  frozen_ui      valid 0.5915 test 0.5928 gap -0.0013  61s
+backtest_a  frozen_item    valid 0.5913 test 0.5908 gap +0.0005  53s
+backtest_a  frozen_nouser  valid 0.5905 test 0.5907 gap -0.0002  62s
+backtest_a  causal_nouser  valid 0.5932 test 0.5886 gap +0.0046  63s
+backtest_c  causal_all     valid 0.7104 test 0.5686 gap +0.1417  86s
+backtest_c  causal_user    valid 0.7063 test 0.5681 gap +0.1382  55s
+backtest_c  causal_ui      valid 0.7105 test 0.5677 gap +0.1428  66s
+backtest_c  causal_item    valid 0.5919 test 0.5670 gap +0.0249  56s
+backtest_c  frozen_all     valid 0.5923 test 0.5698 gap +0.0224  83s
+backtest_c  frozen_user    valid 0.5917 test 0.5681 gap +0.0236  56s
+backtest_c  frozen_ui      valid 0.5924 test 0.5693 gap +0.0231  62s
+backtest_c  frozen_item    valid 0.5910 test 0.5654 gap +0.0257  56s
+backtest_c  frozen_nouser  valid 0.5894 test 0.5671 gap +0.0223  63s
+backtest_c  causal_nouser  valid 0.5935 test 0.5662 gap +0.0272  61s
+
+saved runs/exp11_selection.json

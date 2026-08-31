@@ -1,0 +1,41 @@
+[1] reject    ensemble  pred:miss valid 0.5983+-0.0000 (-0.0051)  stall=1  Abandon the single-downstream-tree architecture 
+[2] reject    ensemble  pred:HIT  valid 0.6014+-0.0000 (-0.0020)  stall=2  Stop feeding scores into a downstream tree. Swit
+[3] reject    ensemble  pred:HIT  valid 0.6011+-0.0000 (-0.0023)  stall=3  Stop feeding scores into a downstream LightGBM e
+
+CONVERGED: stalled: 3 consecutive iterations without +0.002 on validation
+SUMMARY
+{
+  "run": "kairos",
+  "iterations": 3,
+  "wall_clock_s": 149.5,
+  "tokens_in": 31302,
+  "tokens_out": 10665,
+  "manual_interventions": 0,
+  "stall": 3,
+  "converged": true,
+  "reason": "stalled: 3 consecutive iterations without +0.002 on validation",
+  "best_valid": 0.6013993666226608,
+  "families": {
+    "ensemble": {
+      "n": 3,
+      "hits": 2,
+      "scored": 3,
+      "gain": -0.009414810597723422,
+      "best_gain": 0.0,
+      "mean_gain": -0.003138270199241141,
+      "hit_rate": 0.6666666666666666
+    }
+  },
+  "tokens_by_model": {
+    "claude-opus-5": {
+      "in": 9373,
+      "out": 5301,
+      "calls": 3
+    },
+    "claude-sonnet-5": {
+      "in": 21929,
+      "out": 5364,
+      "calls": 7
+    }
+  }
+}

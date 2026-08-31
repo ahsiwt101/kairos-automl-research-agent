@@ -1,0 +1,10 @@
+  strict done
+  permissive done
+
+  fold          split   strict  permissive   delta
+  backtest_a   valid  0.5956   0.5956   +0.0000
+  backtest_a   test   0.5945   0.5965   +0.0020  <- the quantity in question
+  backtest_b   valid  0.6105   0.6105   +0.0000
+  backtest_b   test   0.5970   0.5993   +0.0023  <- the quantity in question
+
+  mean test delta from the permissive reading: +0.0022

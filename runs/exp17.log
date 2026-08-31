@@ -1,0 +1,25 @@
+sequences built in 1s | mean history length 9.8 | rows with no history 25.6%
+  train  mean len   7.9  empty  31.2%
+  valid  mean len  16.9  empty   4.0%
+  test   mean len  17.5  empty   3.9%
+  seed0 ep 1 loss 0.5446 valid 0.6001 (14s)
+  seed0 ep 2 loss 0.5073 valid 0.6016 (15s)
+  seed0 ep 3 loss 0.4998 valid 0.6015 (15s)
+  seed0 ep 4 loss 0.4936 valid 0.5989 (17s)
+  seed0 ep 5 loss 0.4868 valid 0.5965 (15s)
+  seed0 best valid 0.6016
+  seed1 ep 1 loss 0.5449 valid 0.5991 (21s)
+  seed1 ep 2 loss 0.5073 valid 0.6014 (17s)
+  seed1 ep 3 loss 0.5000 valid 0.6002 (17s)
+  seed1 ep 4 loss 0.4939 valid 0.6001 (17s)
+  seed1 ep 5 loss 0.4871 valid 0.5963 (18s)
+  seed1 best valid 0.6014
+  seed2 ep 1 loss 0.5448 valid 0.6009 (18s)
+  seed2 ep 2 loss 0.5071 valid 0.5987 (21s)
+  seed2 ep 3 loss 0.4998 valid 0.6013 (20s)
+  seed2 ep 4 loss 0.4939 valid 0.5985 (21s)
+  seed2 ep 5 loss 0.4875 valid 0.5987 (21s)
+  seed2 ep 6 loss 0.4796 valid 0.5934 (26s)
+  seed2 best valid 0.6013
+
+DIN valid 0.6014 +- 0.0001  (FM 0.6017, GBDT 0.5992)

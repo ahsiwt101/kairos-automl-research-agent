@@ -1,0 +1,26 @@
+[
+  {
+    "fold": "backtest_a",
+    "epochs": 7,
+    "train_only": 0.5942321206170449,
+    "refit": 0.5962477735955487,
+    "delta": 0.0020156529785038124,
+    "extra_rows": 108158
+  },
+  {
+    "fold": "backtest_c",
+    "epochs": 5,
+    "train_only": 0.5704434880508509,
+    "refit": 0.5726891094723683,
+    "delta": 0.0022456214215174075,
+    "extra_rows": 108040
+  },
+  {
+    "fold": "official",
+    "epochs": 7,
+    "train_only": 0.5962640899742693,
+    "refit": 0.5970402561514658,
+    "delta": 0.0007761661771965578,
+    "extra_rows": 124909
+  }
+]

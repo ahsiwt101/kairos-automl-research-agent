@@ -1,0 +1,2 @@
+[1] reject    history   pred:HIT  valid 0.6457+-0.0000 (+0.0679)  stall=0  Train a second, deliberately decorrelated member
+[2] reject    ensemble  pred:HIT  valid 0.6579+-0.0000 (+0.0801)  stall=0  Stop feeding the FM's calibrated score into the 

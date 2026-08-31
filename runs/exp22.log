@@ -1,0 +1,6 @@
+backtest_a   epochs= 7  train-only 0.5942  refit(+108,158) 0.5962  delta +0.0020
+backtest_c   epochs= 5  train-only 0.5704  refit(+108,040) 0.5727  delta +0.0022
+official     epochs= 7  train-only 0.5963  refit(+124,909) 0.5970  delta +0.0008
+
+backtest verdict: refitting the FM is worth +0.0021 on average (+0.0020, +0.0022)
+official row is reference only - the DECISION is made on the backtests.

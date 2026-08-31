@@ -1,0 +1,130 @@
+{
+  "rows": [
+    {
+      "name": "causal_all_bin",
+      "official_valid": 0.7169789479609607,
+      "official_test": 0.5915909273225962,
+      "gap": 0.12538802063836452,
+      "transfer": 0.5798802117657077,
+      "stability": 0.011737813498933991,
+      "seed_std": 2.8549942412359197e-05,
+      "robust": 0.5664256254457423
+    },
+    {
+      "name": "causal_ui_bin",
+      "official_valid": 0.717289427837021,
+      "official_test": 0.5911539856962076,
+      "gap": 0.1261354421408134,
+      "transfer": 0.5799137869289289,
+      "stability": 0.011545449674857156,
+      "seed_std": 0.00045502259358837227,
+      "robust": 0.5666515644330403
+    },
+    {
+      "name": "causal_all_lmr",
+      "official_valid": 0.7329803803435775,
+      "official_test": 0.5789658819487995,
+      "gap": 0.154014498394778,
+      "transfer": 0.5749649523531246,
+      "stability": 0.013294355173619321,
+      "seed_std": 0.0002677384454267684,
+      "robust": 0.5599538243584739
+    },
+    {
+      "name": "causal_ui_lmr",
+      "official_valid": 0.7324876369037694,
+      "official_test": 0.5801846081519038,
+      "gap": 0.15230302875186563,
+      "transfer": 0.5725323357280917,
+      "stability": 0.01289444954991592,
+      "seed_std": 0.0001703554086906478,
+      "robust": 0.5579211133571443
+    },
+    {
+      "name": "causal_user_lmr",
+      "official_valid": 0.7297589372769653,
+      "official_test": 0.5779979805012814,
+      "gap": 0.1517609567756839,
+      "transfer": 0.5724157965061193,
+      "stability": 0.012848032561950551,
+      "seed_std": 0.00012162575651447627,
+      "robust": 0.5578509911231373
+    },
+    {
+      "name": "frozen_all_bin",
+      "official_valid": 0.5986739688804562,
+      "official_test": 0.5909714142338747,
+      "gap": 0.007702554646581539,
+      "transfer": 0.5816639853914471,
+      "stability": 0.011721509246138628,
+      "seed_std": 0.0003017656730329721,
+      "robust": 0.568225703324277
+    },
+    {
+      "name": "frozen_ui_bin",
+      "official_valid": 0.5989355416399182,
+      "official_test": 0.5911997505937951,
+      "gap": 0.007735791046123097,
+      "transfer": 0.580357224373306,
+      "stability": 0.01238230267681889,
+      "seed_std": 0.00013682708658596665,
+      "robust": 0.5662581488754557
+    },
+    {
+      "name": "frozen_all_lmr",
+      "official_valid": 0.597347457636439,
+      "official_test": 0.5921063016903272,
+      "gap": 0.005241155946111853,
+      "transfer": 0.5800959097666841,
+      "stability": 0.011491317018635594,
+      "seed_std": 0.0004563003397865528,
+      "robust": 0.5668878199270171
+    },
+    {
+      "name": "frozen_ui_lmr",
+      "official_valid": 0.5969198937205477,
+      "official_test": 0.5919836784587122,
+      "gap": 0.004936215261835408,
+      "transfer": 0.5797580149547525,
+      "stability": 0.011727756799839228,
+      "seed_std": 0.00011774334209702086,
+      "robust": 0.5663134853338818
+    },
+    {
+      "name": "frozen_item_bin",
+      "official_valid": 0.5965884723024453,
+      "official_test": 0.5896898478004271,
+      "gap": 0.006898624502018169,
+      "transfer": 0.5781068925595214,
+      "stability": 0.012779515839532962,
+      "seed_std": 0.00037093688043093875,
+      "robust": 0.563610603898957
+    }
+  ],
+  "rules": [
+    {
+      "rule": "greedy (argmax validation)",
+      "picked": "causal_all_lmr",
+      "test_obtained": 0.5789658819487995,
+      "regret": 0.013140419741527687
+    },
+    {
+      "rule": "transfer (backtest mean)",
+      "picked": "frozen_all_bin",
+      "test_obtained": 0.5909714142338747,
+      "regret": 0.0011348874564525158
+    },
+    {
+      "rule": "robust (transfer-corrected)",
+      "picked": "frozen_all_bin",
+      "test_obtained": 0.5909714142338747,
+      "regret": 0.0011348874564525158
+    },
+    {
+      "rule": "oracle (unattainable)",
+      "picked": "frozen_all_lmr",
+      "test_obtained": 0.5921063016903272,
+      "regret": 0.0
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"X_path": "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_live/cand3/X.npy", "fold": "official", "train_cfg": {"mode": "scores"}, "seeds": [0, 1, 2], "add_dev": true, "hz_path": "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_live/hz.npy", "out": "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_live/eval.json"}

@@ -1,0 +1,20 @@
+{
+  "control (no auditor)": {
+    "chosen": "causal_all_lmr",
+    "valid": 0.7339168178212866,
+    "hidden_test": 0.5789658819487995,
+    "iterations": 4,
+    "interventions": 0,
+    "tokens": 7600,
+    "reason": ""
+  },
+  "KAIROS (auditor on)": {
+    "chosen": "baseline FM (retained)",
+    "valid": 0.6016,
+    "hidden_test": 0.5946,
+    "iterations": 3,
+    "interventions": 0,
+    "tokens": 7600,
+    "reason": "stalled: 3 consecutive iterations without +0.002 on validation"
+  }
+}

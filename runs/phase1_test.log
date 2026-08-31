@@ -1,0 +1,17 @@
+=== refit_score ===
+  shape (1436609,), finite: True
+  valid primary: 0.6027
+  test  primary: 0.5970   (baseline FM test 0.5946)
+
+=== does it differ from baseline_score ONLY on test rows? ===
+  train  identical to baseline_score: False
+  valid  identical to baseline_score: False
+  test   identical to baseline_score: False
+  (train/valid should NOT be identical - different seeds/tau - but both are
+   train-only fits; the POINT is that test uses a refit model.)
+
+=== din_score ===
+  DIN seed0: valid 0.6012
+  DIN seed1: valid 0.6011
+  shape (1436609,), finite: True
+  valid primary: 0.6023

@@ -1,0 +1,1 @@
+{"names": ["tab"], "seconds": 0.0, "train_cfg": {"objective": "lambdarank", "group": "user_day"}}

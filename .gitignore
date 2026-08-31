@@ -12,6 +12,10 @@ __pycache__/
 # large intermediates; experiment results (json/jsonl/log) are tracked
 runs/cache/
 runs/cache_*/
+# binary intermediates anywhere under runs/ - candidate feature matrices are 100-200MB
+# each and GitHub rejects any blob over 100MB. The json/jsonl/log files under runs/ are
+# DELIVERABLE 3 EVIDENCE (ledgers, the scorer audit, experiment results) and stay tracked.
+runs/**/*.npy
 runs/*.npy
 
 # never commit credentials

@@ -1,0 +1,1 @@
+{"X_path": "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/arm_greedy/cand4/X.npy", "fold": "official", "train_cfg": {"objective": "lambdarank", "group": "user_day"}, "seeds": [0, 1], "add_dev": true, "hz_path": "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/arm_greedy/hz.npy", "out": "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/arm_greedy/eval.json"}

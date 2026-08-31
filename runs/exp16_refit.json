@@ -1,0 +1,26 @@
+[
+  {
+    "fold": "backtest_a",
+    "rounds": 281,
+    "train_only": 0.5935156472754983,
+    "refit": 0.5935544986769611,
+    "delta": 3.885140146275834e-05,
+    "extra_rows": 108158
+  },
+  {
+    "fold": "backtest_c",
+    "rounds": 191,
+    "train_only": 0.569798380734345,
+    "refit": 0.5698137180892646,
+    "delta": 1.533735491965338e-05,
+    "extra_rows": 108040
+  },
+  {
+    "fold": "official",
+    "rounds": 261,
+    "train_only": 0.5909760895333663,
+    "refit": 0.5925111288067076,
+    "delta": 0.0015350392733413099,
+    "extra_rows": 124909
+  }
+]

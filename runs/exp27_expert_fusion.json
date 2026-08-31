@@ -1,0 +1,22 @@
+{
+  "linear rank fusion": {
+    "valid": 0.6031047917935026,
+    "test": 0.5984993409099323,
+    "weights": {
+      "refit": 0.579,
+      "din": 0.211,
+      "x_context": 0.211
+    }
+  },
+  "power-rank fusion (gamma=0.75)": {
+    "valid": 0.6035004980208234,
+    "test": 0.5981529975109809,
+    "weights": {
+      "refit": 0.55,
+      "din": 0.2,
+      "x_context": 0.15,
+      "x_item": 0.05,
+      "cf": 0.05
+    }
+  }
+}

@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_1k/cand1/runner.py", line 36, in <module>
+    main()
+    ~~~~^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_1k/cand1/runner.py", line 12, in main
+    built = m.build(ctx)
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_1k/cand1/candidate.py", line 89, in build
+    w = 0.65
+        ^^^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/agent/context.py", line 230, in refit_score
+    from kairos.kernel.refit_signal import build_refit_signal
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/kernel/refit_signal.py", line 24, in <module>
+    from kairos.kernel.dataset import variant_path
+ImportError: cannot import name 'variant_path' from 'kairos.kernel.dataset' (/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/kernel/dataset.py)
