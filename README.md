@@ -8,10 +8,16 @@ Benchmark: KuaiRand-Pure, within-user ranking on `long_view`, primary = mean(GAU
 | Official FM baseline (reproduced exactly) | 0.6016 | 0.5946 | — | organizers |
 | Greedy validation-following agent (control) | 0.7339 | 0.5790 | −0.0156 | control arm |
 | Hand-built ensemble (reference ceiling) | 0.6045 | 0.5976 | +0.0030 | human |
-| **KAIROS accepted candidate — the submission** | **0.6034** | **0.5988** | **+0.0042** | **agent** |
+| **KAIROS accepted candidate — the submission** | **0.6030** | **0.5983** | **+0.0037** | **agent** |
 
-**3 iterations · 0 manual interventions within the run · 376 s · 36,490 tokens (≈$0.35)**
-— converged on the competition's own N=3-without-+0.002 rule.
+GAUC 0.6653 (+0.0043) · nDCG@5 0.5313 (+0.0031) · `score_dataset` **+0.0037**
+
+**10 iterations · 2 accepts · 0 manual interventions within the run · 941 s ·
+164,789 tokens (≈$1.37)** — converged on a rule declared before the run as FAQ 2.9.1
+permits: ε = 0.002, **N = 5**, minimum-iteration floor **10**. Both accepted candidates
+were independently backtest-confirmed. Full trajectory in
+[`reports/ITERATION_LOG.md`](reports/ITERATION_LOG.md), numbers in
+[`reports/RESULTS.md`](reports/RESULTS.md).
 
 **What "0 interventions" does and does not mean.** No human touched the run once it
 started: no code was edited, no candidate was hand-fixed, no result was overridden. But the
@@ -199,9 +205,13 @@ We follow the Starter Kit.
   `HONEST_CEILING` in `_backtest_confirm` comes from measurements on KuaiRand-Pure's
   backtest folds. On another variant it has no calibration behind it, so the detector's
   gap check transfers but its ceiling check does not.
-- **Prediction hit-rate is measured on a small sample.** 2 of 3 in the latest run, up from
-  0 of 2, and the adversarial critic is the plausible cause — but three scored predictions
-  is not enough to call that an effect rather than a coincidence.
+- **The prediction hit-rate did not hold up.** An earlier 3-iteration run scored 2 of 3
+  and we suggested the adversarial critic had lifted it from 0 of 2. The submitted
+  10-iteration campaign scored **1 of 10**. Ten is a more honest sample than three, so the
+  earlier reading was noise and the claim is withdrawn: the agent beats the baseline while
+  the diagnostics it predicts will move largely do not move. Predictions remain worth
+  scoring — an agent that commits to a falsifiable claim can be checked, and this is what
+  being checked looks like when the answer is unflattering.
 
 ## Contributions
 

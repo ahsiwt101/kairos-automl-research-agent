@@ -1,0 +1,1 @@
+{"names": ["baseline_score", "din_score", "cf_score", "cf_hist", "mf_score", "aux_like", "r_baseline", "r_din", "r_cf", "r_mf", "r_aux", "fused_rank"], "seconds": 1.1, "train_cfg": {}}

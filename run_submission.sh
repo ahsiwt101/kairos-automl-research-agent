@@ -24,6 +24,10 @@ export PYTHONWARNINGS=ignore
 #                is visible, and the trajectory is what Innovation and Impact are scored on)
 #   floor = 10  (minimum scored iterations before convergence may trigger)
 # Hard caps respected: 50 iterations, 6h wall-clock.
+#
+# Token cap 150k, costed rather than guessed: the archived 3-iteration campaign used 36,490
+# tokens, so 150k covers 12-15 iterations with margin. An earlier 400k cap was picked
+# arbitrarily and was nearly 2x the project's entire spend to that point.
 exec "$PY" -u -c "
 import sys; sys.path.insert(0,'.')
 from kairos.agent.loop import Kairos
@@ -34,7 +38,7 @@ p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
 k = Kairos(p, max_iters=50, max_seconds=6*3600, seeds=(0,1,2),
            workdir='runs/kairos_submission_repro',
            eps=0.002, stall_limit=5, min_iters=10,
-           max_tokens_total=400000, prior_summary=PRIOR_PURE,
+           max_tokens_total=150000, prior_summary=PRIOR_PURE,
            baseline_valid=0.6016,
            prewarm=('refit','din','expert','mf','cf','aux'))
 s = k.run()

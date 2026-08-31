@@ -1,0 +1,1 @@
+{"names": ["aff_dur", "aff_tag", "aff_author", "dev_dur", "dev_tag", "dev_author", "log_n_dur", "log_n_tag", "log_n_author", "log_duration", "user_base", "baseline_score", "refit_score", "din_score", "cf_score", "cf_hist", "mf_dot", "expert_context", "expert_item", "expert_user", "is_click", "is_like", "is_follow", "is_comment", "is_forward"], "seconds": 4.6, "train_cfg": {}}

@@ -1,6 +1,83 @@
-  expert[context] seed0: valid 0.5715
-  expert[context] seed1: valid 0.5713
-  expert[item] seed0: valid 0.5903
-  expert[item] seed1: valid 0.5906
-  expert[user] seed0: valid 0.5361
-  expert[user] seed1: valid 0.5362
+  prewarm official/baseline
+  prewarm official/refit
+  prewarm official/din
+  prewarm official/expert:context
+  prewarm official/expert:item
+  prewarm official/expert:user
+  prewarm official/mf
+  prewarm official/cf
+  prewarm official/aux:is_click
+  prewarm official/aux:is_like
+  prewarm official/aux:is_follow
+  prewarm official/aux:is_comment
+  prewarm official/aux:is_forward
+  prewarm backtest_a/baseline
+  prewarm backtest_a/refit
+  prewarm backtest_a/din
+  prewarm backtest_a/expert:context
+  prewarm backtest_a/expert:item
+  prewarm backtest_a/expert:user
+  prewarm backtest_a/mf
+  prewarm backtest_a/cf
+  prewarm backtest_a/aux:is_click
+  prewarm backtest_a/aux:is_like
+  prewarm backtest_a/aux:is_follow
+  prewarm backtest_a/aux:is_comment
+  prewarm backtest_a/aux:is_forward
+[1] ACCEPT    ensemble  pred:HIT  valid 0.6028+-0.0000 (+0.0012)  stall=1  Beat the incumbent 0.6034 rank-fusion blend with
+[2] reject    ensemble  pred:miss valid 0.5997+-0.0000 (-0.0031)  stall=2  Broaden the fusion from the current 2-member ble
+[3] reject    history   pred:miss valid 0.5975+-0.0004 (-0.0054)  stall=3  Add personalised item-attribute affinity feature
+[4] reject    ensemble  pred:miss valid 0.6014+-0.0000 (-0.0014)  stall=4  Feed LightGBM a fusion matrix built from FIVE de
+[5] reject    ensemble  pred:miss valid 0.5998+-0.0000 (-0.0030)  stall=5  Consolidation move: extend the incumbent fusion 
+[6] reject    ensemble  pred:miss valid 0.6007+-0.0004 (-0.0021)  stall=6  Consolidation move: build the incumbent matrix b
+[7] reject    ensemble  pred:miss valid 0.6023+-0.0000 (-0.0006)  stall=7  CONSOLIDATION (0 misses left, so this is deliber
+[8] ACCEPT    ensemble  pred:miss valid 0.6030+-0.0000 (+0.0001)  stall=8  CONSOLIDATION move (0 misses left, so minimal-ri
+[9] reject    ensemble  pred:miss valid 0.6020+-0.0000 (-0.0009)  stall=9  CONSOLIDATION move (0 misses left): keep the inc
+[10] reject    ensemble  pred:miss valid 0.5982+-0.0003 (-0.0047)  stall=10  Consolidation move (not exploratory): keep the i
+
+STOPPED: token budget exhausted (164,789 >= 150,000)
+SUMMARY
+{
+  "run": "kairos",
+  "iterations": 10,
+  "wall_clock_s": 941.2,
+  "tokens_in": 116234,
+  "tokens_out": 48555,
+  "manual_interventions": 0,
+  "stall": 10,
+  "converged": true,
+  "reason": "stalled: 10 consecutive iterations without +0.002 on validation",
+  "best_valid": 0.6029625781617565,
+  "families": {
+    "ensemble": {
+      "n": 9,
+      "hits": 1,
+      "scored": 9,
+      "gain": -0.01449420677975577,
+      "best_gain": 0.0012351506096928144,
+      "mean_gain": -0.0016104674199728633,
+      "hit_rate": 0.1111111111111111
+    },
+    "history": {
+      "n": 1,
+      "hits": 0,
+      "scored": 1,
+      "gain": -0.005365515651810426,
+      "best_gain": 0.0,
+      "mean_gain": -0.005365515651810426,
+      "hit_rate": 0.0
+    }
+  },
+  "tokens_by_model": {
+    "claude-opus-5": {
+      "in": 35479,
+      "out": 22491,
+      "calls": 10
+    },
+    "claude-sonnet-5": {
+      "in": 80755,
+      "out": 26064,
+      "calls": 26
+    }
+  }
+}

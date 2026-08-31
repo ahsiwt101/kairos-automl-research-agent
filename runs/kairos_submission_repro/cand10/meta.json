@@ -1,0 +1,1 @@
+{"names": ["baseline_score", "refit_score", "din_score", "cf_score", "cf_hist", "mf_score", "aux_score", "r_fm", "r_refit", "r_din", "r_cf", "r_mf", "r_aux", "fuse", "fuse_minus_fm", "member_std"], "seconds": 1.4, "train_cfg": {}}
