@@ -33,6 +33,22 @@ STANDARD_LOGS = (f'log_standard_4_08_to_4_21_{_SUF}.csv',
                  f'log_standard_4_22_to_5_08_{_SUF}.csv')
 RANDOM_LOG = f'log_random_4_22_to_5_08_{_SUF}.csv'
 
+
+def variant_path(path):
+    """Suffix a cache path with the active variant, so no two variants can share a cache.
+
+    The columnar cache was made variant-aware; every DERIVED-signal cache (fm_signal,
+    refit, din, mf, cf, expert, aux) was not, which is the same bug one layer down. Those
+    paths are fixed strings, so a 1k run would np.load Pure's 1,436,609-row signal into an
+    11,713,045-row problem - a length mismatch at best, and silent misalignment wherever
+    the length happens to be tolerated. Pure keeps its existing paths untouched so no
+    cached work is invalidated.
+    """
+    if VARIANT == 'pure':
+        return path
+    root, ext = os.path.splitext(path)
+    return f'{root}_{_SUF}{ext}'
+
 LABEL = 'long_view'
 # every feedback signal in the log; `long_view` is scored, the rest are auxiliary targets
 FEEDBACK = ['is_click', 'is_like', 'is_follow', 'is_comment', 'is_forward', 'is_hate',

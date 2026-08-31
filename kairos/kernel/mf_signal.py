@@ -21,9 +21,10 @@ or per-dimension crosses are all legitimate, and it is the agent's call which to
 """
 import os
 import numpy as np
+from kairos.kernel.dataset import variant_path
 from scipy.sparse import csr_matrix
 
-CACHE_DIR = 'runs/mf_cache'
+CACHE_DIR = variant_path('runs/mf_cache')
 
 
 def _als_pass(fixed, fixed_gram, interactions, dim, reg, alpha):

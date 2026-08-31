@@ -15,9 +15,10 @@ that row's horizon.
 """
 import os
 import numpy as np
+from kairos.kernel.dataset import variant_path
 
-CACHE = 'runs/fm_signal.npy'
-AUX_CACHE_DIR = 'runs/aux_cache'
+CACHE = variant_path('runs/fm_signal.npy')
+AUX_CACHE_DIR = variant_path('runs/aux_cache')
 
 
 def _train_windowed_fm(data, windows, y_all, k=16, lr=1e-3, epochs=8, seed=0):

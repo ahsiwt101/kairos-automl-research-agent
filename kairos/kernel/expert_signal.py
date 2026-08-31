@@ -23,8 +23,9 @@ the row's own window horizon, so no row sees a label from inside its evaluation 
 """
 import os
 import numpy as np
+from kairos.kernel.dataset import variant_path
 
-CACHE_DIR = 'runs/expert_cache'
+CACHE_DIR = variant_path('runs/expert_cache')
 
 SUBSPACES = ('context', 'item', 'user')
 

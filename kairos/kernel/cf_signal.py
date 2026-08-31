@@ -16,9 +16,10 @@ window's own rows by construction of the window schedule.
 """
 import os
 import numpy as np
+from kairos.kernel.dataset import variant_path
 from scipy.sparse import csr_matrix
 
-CACHE_DIR = 'runs/cf_cache'
+CACHE_DIR = variant_path('runs/cf_cache')
 
 
 def build_cf_score(data, windows, cache_dir=CACHE_DIR, force=False):

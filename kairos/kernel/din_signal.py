@@ -14,8 +14,9 @@ model is trained on the fold's train split and scores every row.
 """
 import os
 import numpy as np
+from kairos.kernel.dataset import variant_path
 
-CACHE_DIR = 'runs/din_cache'
+CACHE_DIR = variant_path('runs/din_cache')
 
 
 def _training_weights(slen_tr, slen_eval, mode, clip=8.0):

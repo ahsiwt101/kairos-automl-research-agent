@@ -21,8 +21,9 @@ early stopping is unavailable once validation has become training data.
 """
 import os
 import numpy as np
+from kairos.kernel.dataset import variant_path
 
-CACHE_DIR = 'runs/refit_cache'
+CACHE_DIR = variant_path('runs/refit_cache')
 
 
 def build_refit_signal(data, fold, seeds=(0, 1, 2), recency_tau=14, cache_dir=CACHE_DIR,
