@@ -19,7 +19,7 @@ import numpy as np
 
 from kairos.agent.ledger import Ledger, Entry, Hypothesis, Outcome
 from kairos.agent.auditor import Auditor
-from kairos.agent.sandbox import run_candidate
+from kairos.agent.sandbox import run_candidate, _run_capped
 from kairos.kernel.dataset import Data, FOLDS
 from kairos.kernel.causal import window_horizons
 from kairos.kernel.frozenfeat import OFFICIAL_WINDOWS, windows_for_fold
@@ -61,6 +61,7 @@ class Kairos:
         # On KuaiRand-Pure (1.4M rows) the full set costs ~4 min; on 1k (11.7M) it is ~1h,
         # so a transfer probe trims it deliberately and tells the agent what it has.
         self.prewarm = tuple(prewarm)
+        self.cand_mem_gb = float(os.environ.get('KAIROS_CAND_MEM_GB', '6'))
         self._prewarm_caches()
         # The score a candidate must beat to be accepted. Defaults to the official FM
         # baseline, but a run that resumes work should be given the BEST KNOWN result
@@ -134,8 +135,15 @@ class Kairos:
                'out': os.path.abspath(os.path.join(self.workdir, 'eval.json'))}
         p = os.path.join(self.workdir, 'evalcfg.json')
         json.dump(cfg, open(p, 'w'))
-        r = subprocess.run([self.python, 'kairos/agent/evaluate_candidate.py', p],
-                           capture_output=True, text=True, timeout=3600)
+        # Same memory bound as the build step. Evaluation trains the downstream model over
+        # every seed, so on a large variant it is the LARGER of the two - leaving it
+        # unguarded meant the OS killed the parent here instead, and the run vanished with
+        # an empty log exactly as it did before the build step was capped.
+        r, killed = _run_capped([self.python, 'kairos/agent/evaluate_candidate.py', p],
+                                3600, self.cand_mem_gb)
+        if killed:
+            return None, (f'evaluation exceeded its {killed} budget'
+                          + (f' ({self.cand_mem_gb:g} GB)' if killed == 'memory' else ''))
         if r.returncode != 0:
             return None, '\n'.join(r.stderr.strip().splitlines()[-10:])
         return json.load(open(cfg['out'])), None
@@ -170,8 +178,10 @@ class Kairos:
                                                     'backtest_confirm_eval.json'))}
         cfg_path = os.path.join(self.workdir, 'backtest_confirm_cfg.json')
         json.dump(ecfg, open(cfg_path, 'w'))
-        r = subprocess.run([self.python, 'kairos/agent/evaluate_candidate.py', cfg_path],
-                           capture_output=True, text=True, timeout=3600)
+        r, killed = _run_capped([self.python, 'kairos/agent/evaluate_candidate.py', cfg_path],
+                                3600, self.cand_mem_gb)
+        if killed:
+            return False, f'backtest scoring exceeded its {killed} budget'
         if r.returncode != 0:
             tail = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'unknown error'
             return False, f"failed to score on {backtest_fold}: {tail[:150]}"
