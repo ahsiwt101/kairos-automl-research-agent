@@ -54,6 +54,22 @@ Rather than decide quietly, this is `STRICT_TRAIN_SPLIT` in `kairos/kernel/datas
 away, the two cache separately, and the run log records which produced any given
 submission.
 
+**Measured cost of the strict reading** (`experiments/exp28_strict_vs_permissive.py`,
+run on backtest folds so the official test split is never consulted — comparing the two
+variants there would itself be model selection on test labels):
+
+| fold | split | strict | permissive | delta |
+|---|---|---|---|---|
+| backtest_a | valid | 0.5956 | 0.5956 | +0.0000 |
+| backtest_a | test | 0.5945 | 0.5965 | **+0.0020** |
+| backtest_b | valid | 0.6105 | 0.6105 | +0.0000 |
+| backtest_b | test | 0.5970 | 0.5993 | **+0.0023** |
+
+Strict costs **0.0022** on test, replicated on two independent folds — about 2.75x the
+official baseline's own 5-seed standard deviation of 0.0008, so it is a real effect and a
+large share of any delta realistically available on this benchmark. Validation is
+bit-identical under both, which is the empirical confirmation of the property below.
+
 One property makes this safe to leave open: the flag changes **only test-row predictions**.
 The clamp binds only where a window's horizon exceeds 20220421, which is true of exactly
 one window - the test window. No validation number moves, so the agent's search, its
