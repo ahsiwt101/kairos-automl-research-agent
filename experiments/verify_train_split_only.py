@@ -62,11 +62,13 @@ for mod, fn in ((baseline_signal, 'build_fm_signal'),
 print("  [PASS] every windowed trainer accepts a train-split cut-off")
 
 # 4. refit_signal must NOT train on validation any more.
+from kairos.kernel.dataset import STRICT_TRAIN_SPLIT
+assert STRICT_TRAIN_SPLIT is True, \
+    'the strict reading of FAQ 2.9.2 must be the DEFAULT; permissive is opt-in only'
 src = inspect.getsource(refit_signal)
-assert "train_parts=('train', 'valid')" not in src, \
-    'refit_signal still fits a model on validation rows'
-assert 'train_parts' not in src, 'refit_signal should not select training parts at all'
-print("  [PASS] refit_signal no longer fits any model on validation")
+assert 'if not STRICT_TRAIN_SPLIT' in src, \
+    'refit_signal must gate its train+valid pass behind the flag, not run it unconditionally'
+print("  [PASS] strict train-split is the default; train+valid refit is opt-in")
 
 # 5. DIN and experts fit on fold.idx['train'] - confirm that index is train-only.
 tr = d.fold('official').idx['train']
