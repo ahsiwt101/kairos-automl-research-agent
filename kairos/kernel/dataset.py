@@ -77,7 +77,13 @@ def load_cached(path, n_expected, what='signal'):
 # So this is a switch, not a silent choice, and it defaults to the strict reading. The
 # permissive setting is worth a replicated +0.002 (exp22, two independent backtest folds).
 # Whichever is submitted, the run log records which was used.
-STRICT_TRAIN_SPLIT = os.environ.get('KAIROS_STRICT_TRAIN_SPLIT', '1') != '0'
+# Default: PERMISSIVE (0). Chosen deliberately, and the reasoning is above - validation
+# closes 20220428, the test window opens 20220429, so fitting on validation injects no
+# in-period information about a scored row and breaks no temporal ordering. No test label
+# is read under either setting; that is not the axis this flag moves.
+# Set KAIROS_STRICT_TRAIN_SPLIT=1 for the literal reading of FAQ 2.9.2 (costs 0.0022,
+# measured on two backtest folds - experiments/exp28_strict_vs_permissive.py).
+STRICT_TRAIN_SPLIT = os.environ.get('KAIROS_STRICT_TRAIN_SPLIT', '0') != '0'
 
 
 def train_end(fold_name='official'):
