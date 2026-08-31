@@ -1,0 +1,4 @@
+{
+ "verdict": "CONFIRMED",
+ "detail": "backtest_a: valid 0.5966 test 0.5976 gap -0.0010 (threshold 0.035) | ceiling 0.650, over by -0.0524"
+}

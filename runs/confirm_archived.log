@@ -1,0 +1,6 @@
+  recovered accepted candidate from ledger iteration 1 (2068 chars)
+  prewarm official/baseline
+  prewarm backtest_a/baseline
+
+  archived submitted candidate -> CONFIRMED
+  backtest_a: valid 0.5966 test 0.5976 gap -0.0010 (threshold 0.035) | ceiling 0.650, over by -0.0524

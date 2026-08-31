@@ -59,7 +59,12 @@ This campaign was chosen **before either was scored on test**, on four grounds:
 2. Both of its accepted candidates were independently backtest-confirmed (gaps -0.0001 and
    -0.0012 against a 0.035 threshold, 0.053 clear of the honest ceiling). The earlier run's
    accepted candidate never was: confirmation only fired on implausible-looking gains, and
-   +0.0018 did not qualify.
+   +0.0018 did not qualify. Run after the fact
+   (`experiments/confirm_archived.py`), that candidate **does** pass — backtest_a valid
+   0.5966 / test 0.5976, gap -0.0010, 0.052 clear of the ceiling. So the prior's claim was
+   true in substance but unverified when made. The process failure stands regardless of the
+   answer: we asserted a check we had not run, and the harness now confirms every accepted
+   candidate rather than only suspicious ones.
 3. Ten iterations with two accepts shows a trajectory; three iterations does not.
 4. The validation difference is 0.0004 — half a standard deviation, not a real difference.
 

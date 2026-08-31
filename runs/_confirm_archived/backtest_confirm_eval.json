@@ -1,0 +1,1 @@
+{"objective": "scores", "valid_primary": 0.5966211292461618, "valid_std": 0.0, "valid_gauc": 0.664587894832336, "valid_ndcg": 0.5286543636599875, "seeds": [0.5966211292461618], "best_iter": null, "test_primary": 0.5975940778443611}
