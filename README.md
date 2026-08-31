@@ -147,20 +147,37 @@ We follow the Starter Kit.
 
 ## Limitations, honestly
 
-- **Absolute gains are modest.** The scored improvement comes mostly from ensembling and
-  disciplined selection, not from a stronger model. Several well-motivated directions
-  produced nothing measurable: objective alignment (all six losses within seed noise),
-  recency weighting, and watch-time regression as a ranking target.
+- **Absolute gains are modest, and the headroom is genuinely small.** The scored
+  improvement comes mostly from ensembling and disciplined selection, not from a stronger
+  model. Our own decomposition is the reason to expect that: context plus item quality
+  alone reaches 0.5955 — already above the official baseline — and every personalisation
+  feature combined adds roughly 0.006 on top. The honest ceiling on this benchmark is near
+  0.601, not the 0.8645 oracle, so +0.0042 is a meaningful share of what is actually
+  available rather than a small share of what is theoretically available.
+- **Several well-motivated directions produced nothing measurable:** objective alignment
+  (all six losses within seed noise), recency weighting, and watch-time regression as a
+  ranking target.
 - **The noise floor is close to the decision threshold.** Per-seed std is 0.0008 while the
   competition's convergence rule needs +0.002, so single-seed conclusions are unsafe here.
   Every claim above uses ≥3 seeds; two of our own early conclusions were retracted when
   re-run with seeds.
-- **Sequence modelling is unexplored by us too.** DIN/SIM-style target attention over user
-  history is the largest untried direction, and the organizers flag it as blank space.
 - **Backtest folds are imperfect analogues.** They live inside the public-label region, so
   their test windows are 6–7 days against the official 10, and their training windows are
   shorter.
-- **Bonus benchmarks (KuaiRand-1k / 27k) are not attempted** in the current state.
+- **The 27k bonus benchmark is not attempted.** KuaiRand-1k is ported and measured (see
+  below); 27k is 322M interactions and was out of reach on a 16GB laptop.
+- **The 1k transfer probe is incomplete.** The port is done, the FM baseline is reproduced
+  (valid 0.5778 / test 0.5856) and the porting process found five latent defects in our own
+  code, but the agent run there has not converged — every large-gain candidate was rejected
+  because backtest confirmation could not finish inside its budget, which is a limitation of
+  our verifier's cost on 11.7M rows, not a result about the agent.
+- **The leak detector's absolute-ceiling threshold is calibrated on Pure.**
+  `HONEST_CEILING` in `_backtest_confirm` comes from measurements on KuaiRand-Pure's
+  backtest folds. On another variant it has no calibration behind it, so the detector's
+  gap check transfers but its ceiling check does not.
+- **Prediction hit-rate is measured on a small sample.** 2 of 3 in the latest run, up from
+  0 of 2, and the adversarial critic is the plausible cause — but three scored predictions
+  is not enough to call that an effect rather than a coincidence.
 
 ## Contributions
 
