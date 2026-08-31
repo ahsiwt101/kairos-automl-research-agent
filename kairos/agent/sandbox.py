@@ -118,7 +118,49 @@ except Exception:
 '''
 
 
-def run_candidate(src, fold_name='official', timeout=900, workdir='runs/sandbox'):
+def _run_capped(cmd, timeout, mem_limit_gb, poll=0.5):
+    """Run a candidate under BOTH a time budget and a memory budget.
+
+    Why not resource.setrlimit(RLIMIT_AS): on macOS that call raises OSError outright, so
+    a preexec_fn that sets it either kills every launch or - if it swallows the error, as
+    a first version here did - silently caps nothing. The guard looked present and did
+    nothing, which is worse than having none.
+
+    Polling the child's RSS from the parent works on any platform and measures resident
+    pages, which is what actually triggers the OS killer. Without it, a candidate that
+    over-allocates gets the PARENT killed (it holds the columnar cache and every prewarmed
+    signal, so it is the largest process) and the whole run vanishes with no traceback and
+    no ledger entry. With it, the child dies first and the failure comes back through the
+    normal path as something the agent can read and repair around.
+    """
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    cap_mb = int(mem_limit_gb * 1024) if mem_limit_gb and mem_limit_gb > 0 else 0
+    t0, killed = time.time(), None
+    while proc.poll() is None:
+        elapsed = time.time() - t0
+        if elapsed > timeout:
+            killed = 'timeout'
+            break
+        if cap_mb:
+            try:
+                out = subprocess.run(['ps', '-o', 'rss=', '-p', str(proc.pid)],
+                                     capture_output=True, text=True, timeout=5).stdout.strip()
+                if out and int(out) / 1024.0 > cap_mb:
+                    killed = 'memory'
+                    break
+            except (ValueError, OSError, subprocess.SubprocessError):
+                pass          # cannot read RSS; the time budget still bounds the run
+        time.sleep(poll)
+    if killed:
+        proc.kill()
+        proc.communicate()
+        return None, killed
+    out, err = proc.communicate()
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err), None
+
+
+def run_candidate(src, fold_name='official', timeout=900, workdir='runs/sandbox',
+                  mem_limit_gb=float(os.environ.get('KAIROS_CAND_MEM_GB', '6'))):
     """Static-check, then execute in a subprocess. Returns a result dict.
 
     Never raises on candidate failure - a failure is data the agent needs, so it comes
@@ -144,12 +186,21 @@ def run_candidate(src, fold_name='official', timeout=900, workdir='runs/sandbox'
                                out=os.path.abspath(out), meta=os.path.abspath(meta)))
     t0 = time.time()
     try:
-        p = subprocess.run([sys.executable, runner], capture_output=True, text=True,
-                           timeout=timeout)
+        p, killed = _run_capped([sys.executable, runner], timeout, mem_limit_gb)
     except subprocess.TimeoutExpired:
+        killed, p = 'timeout', None
+    if killed == 'timeout':
         return {'ok': False, 'stage': 'timeout', 'seconds': timeout,
                 'error': f'candidate exceeded the {timeout}s budget',
                 'hint': 'the construction is too slow; vectorise it or reduce its scope'}
+    if killed == 'memory':
+        return {'ok': False, 'stage': 'memory', 'seconds': round(time.time() - t0, 1),
+                'error': (f'candidate exceeded the {mem_limit_gb:g} GB memory budget and '
+                          f'was terminated'),
+                'hint': ('materialise fewer full-length columns: build features in float32 '
+                         'rather than float64, delete intermediates you no longer need, '
+                         'and avoid np.unique over a full-length 2-column stack when a '
+                         'factorised key would do')}
     if p.returncode != 0:
         tb = p.stderr.strip().splitlines()
         return {'ok': False, 'stage': 'runtime', 'seconds': round(time.time()-t0, 1),
