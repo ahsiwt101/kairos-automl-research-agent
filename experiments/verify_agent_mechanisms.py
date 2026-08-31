@@ -105,3 +105,22 @@ _bc = _inspect.getsource(_Kairos._backtest_confirm)
 assert 'self.confirm_fold' in _bc, \
     '_backtest_confirm must use the same fold that was warmed, not a hardcoded default'
 print("  [PASS] prewarm covers the confirmation fold; confirmation uses the warmed fold")
+
+# --------------------------------------------------------------------------------------
+# Every ACCEPTED candidate must be backtest-confirmed, not only implausible-looking ones.
+# The artifact this project submitted gained +0.0018 - below the implausibility threshold -
+# so under the old `accept and gain_findings` condition the flagship verifier never ran on
+# the thing that shipped, while the agent's prior asserted that it had.
+_run = _inspect.getsource(_Kairos.run)
+assert 'if accept and self.audit_enabled:' in _run, \
+    'confirmation must fire on every accept, not only on implausible gains'
+assert 'accept and gain_findings and self.audit_enabled' not in _run, \
+    'the old implausible-only confirmation condition is still present'
+# ...and the response must scale with the evidence: a disconfirmation always blocks, an
+# infrastructure failure blocks only when the gain looked implausible to begin with.
+assert 'required = bool(gain_findings)' in _run, 'confirmation severity must be graded'
+assert 'ok is False or (ok is None and required)' in _run, \
+    'a disconfirmation must always block; an unverifiable check only when required'
+assert 'unconfirmed_accept' in _run, \
+    'an accept that could not be confirmed must be recorded as such'
+print("  [PASS] every accept is confirmed; disconfirmation blocks, flakiness is recorded")

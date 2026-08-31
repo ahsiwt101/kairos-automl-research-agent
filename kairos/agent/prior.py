@@ -29,7 +29,10 @@ PRIOR_PURE = (
     "WHAT WON: train_cfg mode='scores' - train your own model(s) inside build() and blend "
     "their FINAL OUTPUTS by within-user rank fusion, bypassing the single-tree "
     "architecture. An accepted candidate blending refit/din/baseline/cf/mf reached "
-    "validation 0.6034 and passed backtest confirmation. That is the incumbent to beat. "
+    "validation 0.6034. That is the incumbent to beat. Note it was accepted on validation "
+    "alone: backtest confirmation runs only when a gain is large enough to look "
+    "implausible, and +0.0018 was not, so the candidate was never independently confirmed "
+    "at acceptance time. "
 
     "AVAILABLE, MEASURED: ctx.refit_score() is the FM fit with the best data per split "
     "(~+0.002 over ctx.baseline_score, confirmed on two backtest folds) - prefer it. "

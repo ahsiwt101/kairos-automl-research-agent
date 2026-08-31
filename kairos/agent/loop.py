@@ -397,7 +397,18 @@ class Kairos:
             # 'history' family candidate needed and did not have: it scored +0.09 on
             # validation from a hand-rolled streaming aggregate that no structural check
             # was watching, and shipped.
-            if accept and gain_findings and self.audit_enabled:
+            # Confirm EVERY accepted candidate, not only implausible-looking ones.
+            # The previous condition (`accept and gain_findings`) meant a candidate whose
+            # gain looked ordinary was never independently checked - and the artifact this
+            # project submitted was exactly that case: +0.0018, below the implausibility
+            # threshold, so the flagship verifier never ran on the thing that shipped.
+            #
+            # The RESPONSE stays proportionate to the evidence:
+            #   implausible gain -> confirmation is REQUIRED; anything but a pass blocks.
+            #   ordinary gain    -> confirmation is run for the record; a DISCONFIRMATION
+            #                       blocks, but a merely unverifiable one (infrastructure
+            #                       failure) is logged without vetoing an honest accept.
+            if accept and self.audit_enabled:
                 ok, detail = self._backtest_confirm(prop)
                 reason += f" | backtest confirm: {detail}"
                 # ok is True (confirmed), False (DISCONFIRMED - the backtest ran and the
@@ -409,8 +420,17 @@ class Kairos:
                 # accusation that steers it off a possibly-sound idea. Same principle as
                 # check_prediction() returning None rather than False for what it cannot
                 # verify.
-                if ok is not True:
+                required = bool(gain_findings)
+                if ok is False or (ok is None and required):
                     accept = False
+                elif ok is None:
+                    self.ledger.log_error(
+                        n, 'unconfirmed_accept',
+                        f'accepted on validation (+{delta:.4f}); backtest confirmation '
+                        f'could not run ({detail})',
+                        'accepted anyway - the gain is ordinary, so an infrastructure '
+                        'failure in the checker does not veto it; recorded as unconfirmed')
+                if ok is not True and not accept:
                     if ok is False:
                         kind = 'implausible_gain'
                         msg = (f"validation jumped +{delta:.4f} and the backtest "
