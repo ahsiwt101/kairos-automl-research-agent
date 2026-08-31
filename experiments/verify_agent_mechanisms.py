@@ -69,3 +69,21 @@ print("  [PASS] a repeatedly-losing family is identifiable as one to block in co
 
 import os; os.remove('runs/_mech_probe.jsonl')
 print("\nALL AGENT-MECHANISM TESTS PASS")
+
+# --------------------------------------------------------------------------------------
+# _backtest_confirm must return the True SINGLETON when it confirms.
+# The caller distinguishes three outcomes by identity - True (confirmed), False
+# (disconfirmed), None (could not be run) - because "we checked and it failed" and "we
+# could not check" are different evidence and must not carry the same message. numpy
+# comparisons return np.bool_, which is equal to True but is not True, so a missing bool()
+# would silently turn every confirmed candidate into a rejected one.
+import inspect as _inspect
+from kairos.agent.loop import Kairos as _Kairos
+_src = _inspect.getsource(_Kairos._backtest_confirm)
+assert 'ok = bool(' in _src, '_backtest_confirm must coerce its verdict with bool()'
+assert _src.count('return None,') >= 3, \
+    'infrastructure failures in _backtest_confirm must return None, not False'
+import numpy as _np
+assert (_np.bool_(True) is not True), 'premise of this test no longer holds'
+assert (bool(_np.bool_(True)) is True), 'bool() must yield the True singleton'
+print("  [PASS] confirm verdict is a real bool; unverifiable is None, not False")

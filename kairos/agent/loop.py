@@ -172,7 +172,7 @@ class Kairos:
         res = run_candidate(prop.code, backtest_fold, timeout=self.cand_timeout,
                             workdir=os.path.join(self.workdir, 'backtest_confirm'))
         if not res['ok']:
-            return False, f"failed to run on {backtest_fold}: {res.get('error','')[:200]}"
+            return None, f"could not run on {backtest_fold}: {res.get('error','')[:200]}"
         hz_path = os.path.join(self.workdir, f'hz_{backtest_fold}.npy')
         if not os.path.exists(hz_path):
             hz_bt = window_horizons(self.data.date.astype(np.int64),
@@ -188,10 +188,10 @@ class Kairos:
         r, killed = _run_capped([self.python, 'kairos/agent/evaluate_candidate.py', cfg_path],
                                 3600, self.cand_mem_gb)
         if killed:
-            return False, f'backtest scoring exceeded its {killed} budget'
+            return None, f'backtest scoring exceeded its {killed} budget'
         if r.returncode != 0:
             tail = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'unknown error'
-            return False, f"failed to score on {backtest_fold}: {tail[:150]}"
+            return None, f"could not score on {backtest_fold}: {tail[:150]}"
         ev = json.load(open(ecfg['out']))
         gap = ev['valid_primary'] - ev['test_primary']
         # Two INDEPENDENT signals, because one leak shape evades the other.
@@ -210,7 +210,10 @@ class Kairos:
         HONEST_CEILING = {'backtest_a': 0.60, 'backtest_b': 0.60, 'backtest_c': 0.58}
         ceiling = HONEST_CEILING.get(backtest_fold, 0.62) + 0.05
         over_ceiling = max(ev['valid_primary'], ev['test_primary']) - ceiling
-        ok = (gap < threshold) and (over_ceiling < 0)
+        # bool() is load-bearing: these comparisons yield numpy bools, and the caller
+        # tests `ok is not True`. np.bool_(True) is not the True singleton, so without the
+        # coercion every CONFIRMED candidate would be misread as unverifiable and rejected.
+        ok = bool((gap < threshold) and (over_ceiling < 0))
         detail = (f"{backtest_fold}: valid {ev['valid_primary']:.4f} test "
                  f"{ev['test_primary']:.4f} gap {gap:+.4f} (threshold {threshold}) | "
                  f"ceiling {ceiling:.3f}, over by {over_ceiling:+.4f}")
@@ -369,15 +372,35 @@ class Kairos:
             if accept and gain_findings and self.audit_enabled:
                 ok, detail = self._backtest_confirm(prop)
                 reason += f" | backtest confirm: {detail}"
-                if not ok:
+                # ok is True (confirmed), False (DISCONFIRMED - the backtest ran and the
+                # gain did not survive) or None (UNVERIFIABLE - the backtest could not run
+                # at all). Both non-True cases block acceptance, because an unverified
+                # +0.07 is exactly what we must never ship. But they are NOT the same
+                # evidence and must not carry the same message: telling the agent its
+                # hypothesis "likely leaked" when the verifier merely timed out is a false
+                # accusation that steers it off a possibly-sound idea. Same principle as
+                # check_prediction() returning None rather than False for what it cannot
+                # verify.
+                if ok is not True:
                     accept = False
-                    self.ledger.log_error(
-                        n, 'implausible_gain',
-                        f"validation jumped +{delta:.4f} but failed backtest confirmation "
-                        f"({detail}) - likely within-window label feedback from a leak "
-                        f"shape the structural checks do not cover",
-                        'rejected without spending a repair attempt; counts as a normal '
-                        'miss against the stall budget, not a crash')
+                    if ok is False:
+                        kind = 'implausible_gain'
+                        msg = (f"validation jumped +{delta:.4f} and the backtest "
+                               f"DISCONFIRMED it ({detail}) - likely within-window label "
+                               f"feedback from a leak shape the structural checks do not "
+                               f"cover")
+                        rec = ('rejected without spending a repair attempt; counts as a '
+                               'normal miss against the stall budget, not a crash')
+                    else:
+                        kind = 'unverified_gain'
+                        msg = (f"validation jumped +{delta:.4f} but the backtest could "
+                               f"not be run to check it ({detail}). This is an "
+                               f"INFRASTRUCTURE failure, not evidence of a leak - the "
+                               f"hypothesis is untested, not refuted")
+                        rec = ('rejected because a large gain must never be accepted '
+                               'unverified; re-propose it in a cheaper form the backtest '
+                               'can afford to confirm')
+                    self.ledger.log_error(n, kind, msg, rec)
             out = Outcome(valid_primary=ev['valid_primary'], valid_gauc=ev['valid_gauc'],
                           valid_ndcg=ev['valid_ndcg'], delta_vs_incumbent=delta,
                           prediction_hit=hit,
