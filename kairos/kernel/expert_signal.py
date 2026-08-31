@@ -23,7 +23,7 @@ the row's own window horizon, so no row sees a label from inside its evaluation 
 """
 import os
 import numpy as np
-from kairos.kernel.dataset import variant_path
+from kairos.kernel.dataset import variant_path, load_cached
 
 CACHE_DIR = variant_path('runs/expert_cache')
 
@@ -85,8 +85,9 @@ def build_expert_signal(data, fold, hz, subspace, seeds=(0, 1), rounds=250,
         raise ValueError(f"expert_score: '{subspace}' not in {SUBSPACES}")
     os.makedirs(cache_dir, exist_ok=True)
     cache = os.path.join(cache_dir, f'{fold.name}_{subspace}.npy')
-    if os.path.exists(cache) and not force:
-        return np.load(cache)
+    cached = None if force else load_cached(cache, data.n, f'expert {subspace}')
+    if cached is not None:
+        return cached
 
     import lightgbm as lgb
     from kairos.kernel.frozenfeat import within_user_deviation, windows_for_fold

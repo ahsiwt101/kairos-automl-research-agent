@@ -21,7 +21,7 @@ early stopping is unavailable once validation has become training data.
 """
 import os
 import numpy as np
-from kairos.kernel.dataset import variant_path
+from kairos.kernel.dataset import variant_path, load_cached
 
 CACHE_DIR = variant_path('runs/refit_cache')
 
@@ -31,8 +31,9 @@ def build_refit_signal(data, fold, seeds=(0, 1, 2), recency_tau=14, cache_dir=CA
     """Returns float32 (n,) - see the module docstring for the per-split semantics."""
     os.makedirs(cache_dir, exist_ok=True)
     cache = os.path.join(cache_dir, f'{fold.name}_tau{recency_tau}.npy')
-    if os.path.exists(cache) and not force:
-        return np.load(cache)
+    cached = None if force else load_cached(cache, data.n, 'refit signal')
+    if cached is not None:
+        return cached
 
     from kairos.kernel.features import Encoder
     from kairos.models.train import train_fm, predict

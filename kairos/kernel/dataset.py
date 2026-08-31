@@ -34,6 +34,32 @@ STANDARD_LOGS = (f'log_standard_4_08_to_4_21_{_SUF}.csv',
 RANDOM_LOG = f'log_random_4_22_to_5_08_{_SUF}.csv'
 
 
+
+def load_cached(path, n_expected, what='signal'):
+    """Load a cached per-row array, but ONLY if its length matches the current dataset.
+
+    Every cache in this project is a bare .npy keyed by a path string. Four separate times
+    a path was keyed by something that did not distinguish the dataset - by nothing, then
+    by fold name - and a run silently loaded an array built for a DIFFERENT variant.
+    np.load is happy to return it; the mismatch only surfaces later as a shape error in
+    unrelated code, or worse, not at all where lengths coincidentally align.
+
+    Path discipline alone clearly does not hold: the same mistake recurred at four sites in
+    one afternoon. A length check at the point of load is the invariant that actually binds,
+    because it does not depend on remembering anything.
+
+    Returns None when there is nothing valid to load, so callers rebuild.
+    """
+    if not os.path.exists(path):
+        return None
+    arr = np.load(path, allow_pickle=False)
+    if arr.shape[0] != n_expected:
+        raise LeakageError(
+            f"cached {what} at {path} has {arr.shape[0]:,} rows but this dataset has "
+            f"{n_expected:,}. This cache was built for a different variant or split. "
+            f"Delete it or key its path by variant (see variant_path).")
+    return arr
+
 def variant_path(path):
     """Suffix a cache path with the active variant, so no two variants can share a cache.
 

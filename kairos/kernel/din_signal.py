@@ -14,7 +14,7 @@ model is trained on the fold's train split and scores every row.
 """
 import os
 import numpy as np
-from kairos.kernel.dataset import variant_path
+from kairos.kernel.dataset import variant_path, load_cached
 
 CACHE_DIR = variant_path('runs/din_cache')
 
@@ -65,8 +65,9 @@ def build_din_signal(data, fold, hz, seeds=(0, 1), max_len=32, k=32, hidden=64,
     os.makedirs(cache_dir, exist_ok=True)
     tag = f'{fold.name}_k{k}' + (f'_{weight_mode}' if weight_mode else '')
     cache = os.path.join(cache_dir, tag + '.npy')
-    if os.path.exists(cache) and not force:
-        return np.load(cache)
+    cached = None if force else load_cached(cache, data.n, 'din signal')
+    if cached is not None:
+        return cached
 
     import torch
     from kairos.kernel.features import Encoder

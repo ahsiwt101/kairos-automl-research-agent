@@ -15,7 +15,7 @@ that row's horizon.
 """
 import os
 import numpy as np
-from kairos.kernel.dataset import variant_path
+from kairos.kernel.dataset import variant_path, load_cached
 
 CACHE = variant_path('runs/fm_signal.npy')
 AUX_CACHE_DIR = variant_path('runs/aux_cache')
@@ -65,8 +65,9 @@ def _train_windowed_fm(data, windows, y_all, k=16, lr=1e-3, epochs=8, seed=0):
 def build_fm_signal(data, windows, k=16, lr=1e-3, epochs=8, seed=0, cache=CACHE,
                     force=False):
     """The official baseline's own out-of-sample long_view score."""
-    if os.path.exists(cache) and not force:
-        return np.load(cache)
+    cached = None if force else load_cached(cache, data.n, 'fm signal')
+    if cached is not None:
+        return cached
     out = _train_windowed_fm(data, windows, data.y_raw.astype(np.float32),
                              k=k, lr=lr, epochs=epochs, seed=seed)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
@@ -91,8 +92,9 @@ def build_auxiliary_signal(data, windows, name, k=16, lr=1e-3, epochs=6, seed=0,
         raise ValueError(f"auxiliary_signal: '{name}' not in {AUX_COLUMNS}")
     os.makedirs(cache_dir, exist_ok=True)
     cache = os.path.join(cache_dir, f'{name}.npy')
-    if os.path.exists(cache) and not force:
-        return np.load(cache)
+    cached = None if force else load_cached(cache, data.n, f'aux signal {name}')
+    if cached is not None:
+        return cached
     y = (data.col(name) != 0).astype(np.float32)
     out = _train_windowed_fm(data, windows, y, k=k, lr=lr, epochs=epochs, seed=seed)
     np.save(cache, out)

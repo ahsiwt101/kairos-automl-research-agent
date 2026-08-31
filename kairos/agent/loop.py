@@ -61,7 +61,14 @@ class Kairos:
         # On KuaiRand-Pure (1.4M rows) the full set costs ~4 min; on 1k (11.7M) it is ~1h,
         # so a transfer probe trims it deliberately and tells the agent what it has.
         self.prewarm = tuple(prewarm)
+        # Both budgets scale with the dataset. Pure's 1.4M rows build well inside 900s;
+        # 1k's 11.7M rows do not, and a build that is merely SLOW should not be reported to
+        # the agent as a failed hypothesis. The memory cap must also leave the parent room:
+        # the parent holds the columnar cache and every prewarmed signal, so a cap set too
+        # close to total RAM gets the PARENT killed rather than the child - which is the
+        # silent-vanish failure this guard exists to prevent.
         self.cand_mem_gb = float(os.environ.get('KAIROS_CAND_MEM_GB', '6'))
+        self.cand_timeout = int(os.environ.get('KAIROS_CAND_TIMEOUT', '900'))
         self._prewarm_caches()
         # The score a candidate must beat to be accepted. Defaults to the official FM
         # baseline, but a run that resumes work should be given the BEST KNOWN result
@@ -162,7 +169,7 @@ class Kairos:
         way, and this check does not need to know anything about what the candidate's code
         does internally to catch it.
         """
-        res = run_candidate(prop.code, backtest_fold,
+        res = run_candidate(prop.code, backtest_fold, timeout=self.cand_timeout,
                             workdir=os.path.join(self.workdir, 'backtest_confirm'))
         if not res['ok']:
             return False, f"failed to run on {backtest_fold}: {res.get('error','')[:200]}"
@@ -274,7 +281,7 @@ class Kairos:
                                     'hint': 'propose a minimal variation on the incumbent, '
                                             'or a family with a non-negative track record'}
                     continue
-            res = run_candidate(prop.code, self.fold_name,
+            res = run_candidate(prop.code, self.fold_name, timeout=self.cand_timeout,
                                 workdir=os.path.join(self.workdir, f'cand{n}'))
             if not res['ok']:
                 last_failure = {'stage': res['stage'], 'error': res['error'],

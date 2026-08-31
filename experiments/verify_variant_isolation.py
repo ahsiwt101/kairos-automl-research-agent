@@ -60,4 +60,28 @@ print(f"  [PASS] all {len(pure)} 1k paths differ from Pure's")
 # 3. Every key present in both, none silently dropped.
 assert set(pure) == set(k1), 'variant probes disagree on which caches exist'
 print("  [PASS] both variants expose the same cache set")
+# 4. A cache whose length does not match the dataset must be REFUSED, not returned.
+#    Path discipline alone did not hold: the same keying mistake recurred at four sites
+#    (fixed paths, then paths keyed by fold name). A length check at the point of load is
+#    the invariant that binds without relying on anyone remembering the convention.
+import numpy as np, tempfile
+sys.path.insert(0, '.')
+from kairos.kernel.dataset import load_cached, LeakageError
+
+with tempfile.TemporaryDirectory() as td:
+    p = os.path.join(td, 'wrong_length.npy')
+    np.save(p, np.zeros(1_436_609, dtype=np.float32))       # a Pure-sized signal
+    try:
+        load_cached(p, 11_713_045, 'fm signal')             # loaded into a 1k-sized run
+        raise AssertionError('a cross-variant cache was accepted')
+    except LeakageError as e:
+        assert '1,436,609' in str(e) and '11,713,045' in str(e), f'unhelpful message: {e}'
+    print("  [PASS] a cross-variant cache is refused with both row counts named")
+
+    ok = os.path.join(td, 'right_length.npy')
+    np.save(ok, np.zeros(500, dtype=np.float32))
+    assert load_cached(ok, 500, 'fm signal') is not None, 'a valid cache was refused'
+    assert load_cached(os.path.join(td, 'absent.npy'), 500) is None, 'missing cache must be None'
+    print("  [PASS] a matching cache loads and a missing one returns None")
+
 print("\nVARIANT-ISOLATION TESTS PASS")
