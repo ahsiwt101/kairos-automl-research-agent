@@ -28,3 +28,28 @@ print("PASS: run correctly ends at the stated N=3 rule, not later")
 
 import os
 os.remove('runs/_stall_probe.jsonl')
+
+# --------------------------------------------------------------------------------------
+# FAQ 2.9.1: a crashed iteration (no validation score) must NOT advance or reset the
+# convergence window. It still counts toward the 50-iteration and 6h caps.
+import math
+led = Ledger(path='runs/_stall_crash_probe.jsonl', baseline=0.6016)
+def _miss(i):
+    return Entry(iteration=i, hypothesis=Hypothesis(family='f', statement='s', mechanism='m',
+                                       predicted_effect='e', predicted_gain=0.0),
+                 action_kind='patch', code_diff='',
+                 outcome=Outcome(valid_primary=0.6000), decision='reject', reason='')
+def _crash(i):
+    return Entry(iteration=i, hypothesis=Hypothesis(family='f', statement='s', mechanism='m',
+                                       predicted_effect='e', predicted_gain=0.0),
+                 action_kind='patch', code_diff='',
+                 outcome=Outcome(valid_primary=float('nan')), decision='crash', reason='')
+led.add(_miss(1)); led.add(_crash(2)); led.add(_miss(3))
+assert led.stall_counter(0.002) == 2, \
+    f'crashed iteration must not advance the window, got {led.stall_counter(0.002)}'
+led.add(_crash(4))
+assert led.stall_counter(0.002) == 2, 'a trailing crash must not advance the window either'
+led.add(_miss(5))
+assert led.stall_counter(0.002) == 3, 'real misses must still advance the window'
+import os as _os; _os.remove('runs/_stall_crash_probe.jsonl')
+print("  [PASS] crashed iterations neither advance nor reset the convergence window")

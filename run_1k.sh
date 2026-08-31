@@ -17,7 +17,13 @@ from kairos.agent.prior import PRIOR_1K
 p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
 # baseline_valid is 1k's OWN FM baseline - carrying Pure's 0.6034 would make every
 # candidate look like a regression against a number from a different dataset.
-k = Kairos(p, max_iters=8, seeds=(0,1,2), workdir='runs/kairos_1k',
+# One seed, not three: every candidate is re-run in full for backtest confirmation, so
+# seed count multiplies the COST OF VERIFICATION on 11.7M rows. Both iterations of the
+# first attempt were rejected not because they failed the check but because the check
+# could not finish inside its budget - the verifier, not the hypothesis, was the
+# bottleneck. Seed averaging was measured to saturate by 3 seeds on Pure and is worth
+# ~0.001; being able to CHECK a +0.07 claim is worth more.
+k = Kairos(p, max_iters=8, seeds=(0,), workdir='runs/kairos_1k',
            max_tokens_total=200000, prior_summary=PRIOR_1K,
            baseline_valid=float('$BASE'), prewarm=('refit',))
 s = k.run()

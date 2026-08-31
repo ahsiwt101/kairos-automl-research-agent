@@ -119,7 +119,12 @@ class Ledger:
         for e in self.entries:
             p = e.outcome.valid_primary
             if p != p:
-                stall += 1
+                # FAQ 2.9.1: "Iterations that crash or produce no validation score are
+                # logged and count toward the 50-iteration cap and the 6h ceiling, but do
+                # not advance or reset the convergence window." An earlier version counted
+                # a crash as a miss, which ended runs EARLIER than the rule permits -
+                # conservative, but it spends the convergence budget on iterations that
+                # produced no evidence either way.
                 continue
             if p > best_so_far + eps:
                 best_so_far, stall = max(best_so_far, p), 0
