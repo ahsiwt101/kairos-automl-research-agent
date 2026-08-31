@@ -22,7 +22,7 @@ from scipy.sparse import csr_matrix
 CACHE_DIR = variant_path('runs/cf_cache')
 
 
-def build_cf_score(data, windows, cache_dir=CACHE_DIR, force=False):
+def build_cf_score(data, windows, cache_dir=CACHE_DIR, force=False, fit_end=None):
     """Returns (score, hist_count): float32 (n,) each.
        score      = mean IDF-weighted similarity between the row's item and the items in
                     this user's frozen history (0 if the user has no prior history)
@@ -41,7 +41,10 @@ def build_cf_score(data, windows, cache_dir=CACHE_DIR, force=False):
 
     for lo, hi, hz in windows:
         rows = np.flatnonzero((date >= lo) & (date <= hi))
-        fit = np.flatnonzero((date <= hz) & (data.y_raw == 1))
+        # FAQ 2.9.2: the co-occurrence / factorisation model is FIT on train-split rows
+        # only. The window horizon may run to 20220428; the fit set may not.
+        cut = hz if fit_end is None else min(hz, fit_end)
+        fit = np.flatnonzero((date <= cut) & (data.y_raw == 1))
         if len(rows) == 0 or len(fit) < 200:
             continue
         u_idx = data.user_id[fit].astype(np.int64)

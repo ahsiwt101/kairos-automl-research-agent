@@ -21,7 +21,8 @@ CACHE = variant_path('runs/fm_signal.npy')
 AUX_CACHE_DIR = variant_path('runs/aux_cache')
 
 
-def _train_windowed_fm(data, windows, y_all, k=16, lr=1e-3, epochs=8, seed=0):
+def _train_windowed_fm(data, windows, y_all, k=16, lr=1e-3, epochs=8, seed=0,
+                       fit_end=None):
     """Shared trainer: an independent FM per frozen window, each fit on rows dated at or
     before that window's horizon, predicting y_all restricted to the window's own rows."""
     import torch
@@ -32,7 +33,10 @@ def _train_windowed_fm(data, windows, y_all, k=16, lr=1e-3, epochs=8, seed=0):
     out = np.zeros(data.n, dtype=np.float32)
     for lo, hi, hz in windows:
         rows = np.flatnonzero((date >= lo) & (date <= hi))
-        fit = np.flatnonzero(date <= hz)
+        # FAQ 2.9.2: models train on the train split only. The window HORIZON may reach
+        # 20220428 (features may use validation feedback); the FIT set may not.
+        cut = hz if fit_end is None else min(hz, fit_end)
+        fit = np.flatnonzero(date <= cut)
         if len(rows) == 0 or len(fit) < 5000:
             continue                       # no usable history yet; leave the score at 0
         enc = Encoder(data).fit(fit)
@@ -63,13 +67,13 @@ def _train_windowed_fm(data, windows, y_all, k=16, lr=1e-3, epochs=8, seed=0):
 
 
 def build_fm_signal(data, windows, k=16, lr=1e-3, epochs=8, seed=0, cache=CACHE,
-                    force=False):
+                    force=False, fit_end=None):
     """The official baseline's own out-of-sample long_view score."""
     cached = None if force else load_cached(cache, data.n, 'fm signal')
     if cached is not None:
         return cached
     out = _train_windowed_fm(data, windows, data.y_raw.astype(np.float32),
-                             k=k, lr=lr, epochs=epochs, seed=seed)
+                             k=k, lr=lr, epochs=epochs, seed=seed, fit_end=fit_end)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     np.save(cache, out)
     return out
@@ -79,7 +83,7 @@ AUX_COLUMNS = ('is_click', 'is_like', 'is_follow', 'is_comment', 'is_forward')
 
 
 def build_auxiliary_signal(data, windows, name, k=16, lr=1e-3, epochs=6, seed=0,
-                           force=False, cache_dir=AUX_CACHE_DIR):
+                           force=False, cache_dir=AUX_CACHE_DIR, fit_end=None):
     """Out-of-sample propensity for an auxiliary feedback signal (is_click, is_like, ...).
 
     Uses the SAME windowed-FM construction as the baseline score, applied to a different
@@ -96,6 +100,7 @@ def build_auxiliary_signal(data, windows, name, k=16, lr=1e-3, epochs=6, seed=0,
     if cached is not None:
         return cached
     y = (data.col(name) != 0).astype(np.float32)
-    out = _train_windowed_fm(data, windows, y, k=k, lr=lr, epochs=epochs, seed=seed)
+    out = _train_windowed_fm(data, windows, y, k=k, lr=lr, epochs=epochs, seed=seed,
+                             fit_end=fit_end)
     np.save(cache, out)
     return out

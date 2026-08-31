@@ -49,7 +49,7 @@ def _als_pass(fixed, fixed_gram, interactions, dim, reg, alpha):
 
 
 def build_mf_factors(data, windows, dim=16, reg=0.05, alpha=40.0, iters=6, seed=0,
-                     cache_dir=CACHE_DIR, force=False):
+                     cache_dir=CACHE_DIR, force=False, fit_end=None):
     """Returns (U_row, V_row): per-row user & item factor vectors, float32 (n, dim) each.
 
     dot(U_row[i], V_row[i]) is a personalised collaborative-filtering score for row i;
@@ -71,7 +71,10 @@ def build_mf_factors(data, windows, dim=16, reg=0.05, alpha=40.0, iters=6, seed=
 
     for lo, hi, hz in windows:
         rows = np.flatnonzero((date >= lo) & (date <= hi))
-        fit = np.flatnonzero((date <= hz) & (data.y_raw == 1))
+        # FAQ 2.9.2: the co-occurrence / factorisation model is FIT on train-split rows
+        # only. The window horizon may run to 20220428; the fit set may not.
+        cut = hz if fit_end is None else min(hz, fit_end)
+        fit = np.flatnonzero((date <= cut) & (data.y_raw == 1))
         if len(rows) == 0 or len(fit) < 500:
             continue
         u_idx = data.user_id[fit].astype(np.int64)

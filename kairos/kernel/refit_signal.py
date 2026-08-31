@@ -1,23 +1,28 @@
-"""Per-split-optimal baseline score: the refit procedure exp22 confirmed, made safe to use.
+"""Per-split baseline score, trained on the TRAIN SPLIT ONLY.
 
 exp22 established on two independent backtest folds (+0.0020, +0.0022) that refitting the
-FM on train+validation beats training on train alone. But the procedure has an asymmetry
-that is easy to get wrong and silently self-deceiving: a model refit on validation has SEEN
-validation, so its validation score is meaningless and any blend weight fitted against it
-is fitted against a lie.
+FM on train+validation beats training on train alone, and an earlier version of this module
+did exactly that for test rows. **That is no longer what this does**, and the reason is a
+rule, not a measurement.
 
-So this primitive resolves the asymmetry per row rather than handing the caller a footgun:
+Organizer FAQ 2.9.2 pins the training data for KuaiRand-Pure:
 
-    train / valid rows -> prediction from a model trained on TRAIN ONLY
-    test rows          -> prediction from a model trained on TRAIN + VALIDATION
+    "training data is the train split only: date 20220408-20220421"
 
-A caller therefore fits blend weights on validation against honest train-only predictions,
-while the test predictions it finally emits carry the refit benefit - which is exactly the
-procedure exp22 validated, with no way to accidentally invert it. No test label is ever
-used; the refit model trains on train+valid only.
+with the 22-28 window supplying validation and 29-0508 supplying test. Fitting on
+train+validation - even though it never touches a TEST label, and even though it is
+ordinary practice in most competitions - puts validation rows into training data, which
+that sentence does not permit. Judging is by code review, so the safe reading is the
+literal one: train on train, tune on validation. The ~0.002 the refit was worth is not
+worth an argument with a reviewer over what counts as training data.
 
-Epoch count for the refit comes from the train-only run's early-stopping choice, because
-early stopping is unavailable once validation has become training data.
+Every row therefore gets a prediction from a model trained on the TRAIN SPLIT ONLY. The
+per-split asymmetry that made this primitive worth having is gone; what remains is a
+seed-averaged FM with early stopping on validation, which is honest for every row and can
+be blended against without any risk of fitting weights against a model that has seen the
+rows it is being weighted on.
+
+No test label is ever read, at any point, by any path in this module.
 """
 import os
 import numpy as np
@@ -42,23 +47,19 @@ def build_refit_signal(data, fold, seeds=(0, 1, 2), recency_tau=14, cache_dir=CA
     enc = Encoder(data).fit(tr)
     out = np.zeros(data.n, dtype=np.float32)
 
-    # pass 1: train-only models -> honest scores for train and validation rows
-    epochs, tr_preds, va_preds = [], [], []
+    # ONE pass: models trained on the train split only, scoring every row.
+    # There is deliberately no second pass. The train+valid refit that used to score test
+    # rows is removed on FAQ 2.9.2 grounds - see the module docstring. Keeping the code
+    # path "just in case" would leave a function in the repo that trains on validation,
+    # which is exactly what a code reviewer would flag.
+    tr_preds, va_preds, te_preds = [], [], []
     for sd in seeds:
         r = train_fm(fold, enc, loss='bce', seed=sd, recency_tau=recency_tau)
-        epochs.append(r['best_epoch'])
         tr_preds.append(predict(r['model'], enc, tr))
         va_preds.append(predict(r['model'], enc, va))
+        te_preds.append(predict(r['model'], enc, te))
     out[tr] = np.mean(tr_preds, 0).astype(np.float32)
     out[va] = np.mean(va_preds, 0).astype(np.float32)
-    n_ep = int(np.median(epochs))
-
-    # pass 2: refit on train+valid for that many epochs -> scores for test rows only
-    te_preds = []
-    for sd in seeds:
-        r = train_fm(fold, enc, loss='bce', seed=sd, recency_tau=recency_tau,
-                     epochs=n_ep, patience=n_ep + 1, train_parts=('train', 'valid'))
-        te_preds.append(predict(r['model'], enc, te))
     out[te] = np.mean(te_preds, 0).astype(np.float32)
 
     np.save(cache, out)

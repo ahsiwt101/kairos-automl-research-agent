@@ -60,6 +60,21 @@ def load_cached(path, n_expected, what='signal'):
             f"Delete it or key its path by variant (see variant_path).")
     return arr
 
+
+def train_end(fold_name='official'):
+    """Last date whose rows may be used as MODEL TRAINING data for this fold.
+
+    Organizer FAQ 2.9.2: "training data is the train split only: date 20220408-20220421".
+    Validation is for tuning and selection, and its labels may inform FEATURE statistics
+    (FAQ 2.2 permits "the training split and the public validation feedback") - but no
+    model's loss may see a validation row.
+
+    Window horizons and training cut-offs are therefore different quantities and must not
+    be conflated. A frozen window over the test period legitimately aggregates labels up to
+    20220428; a model scoring that window may still only FIT on rows up to 20220421.
+    """
+    return int(FOLDS[fold_name]['train'][1])
+
 def variant_path(path):
     """Suffix a cache path with the active variant, so no two variants can share a cache.
 

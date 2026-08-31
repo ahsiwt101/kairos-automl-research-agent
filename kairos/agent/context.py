@@ -17,7 +17,7 @@ They are reachable only through auxiliary_signal(), which time-gates them exactl
 frozen_prefix does for the scored label.
 """
 import numpy as np
-from kairos.kernel.dataset import variant_path
+from kairos.kernel.dataset import variant_path, train_end
 from kairos.kernel.dataset import Data, FOLDS
 from kairos.kernel import causal, frozenfeat
 
@@ -153,7 +153,8 @@ class Context:
         if self._fm is None:
             from kairos.kernel.baseline_signal import build_fm_signal
             self._fm = build_fm_signal(self.data, self.windows,
-                                       cache=variant_path(f'runs/fm_signal_{self.fold_name}.npy'))
+                                       cache=variant_path(f'runs/fm_signal_{self.fold_name}.npy'),
+                                       fit_end=train_end(self.fold_name))
         return self._fm
 
     def mf_factors(self, dim=16):
@@ -175,7 +176,8 @@ class Context:
             from kairos.kernel.mf_signal import build_mf_factors
             self._mf[dim] = build_mf_factors(
                 self.data, self.windows, dim=dim,
-                cache_dir=variant_path(f'runs/mf_cache_{self.fold_name}'))
+                cache_dir=variant_path(f'runs/mf_cache_{self.fold_name}'),
+                fit_end=train_end(self.fold_name))
         return self._mf[dim]
 
     def auxiliary_signal(self, name):
@@ -191,7 +193,8 @@ class Context:
             from kairos.kernel.baseline_signal import build_auxiliary_signal
             self._aux[name] = build_auxiliary_signal(
                 self.data, self.windows, name,
-                cache_dir=variant_path(f'runs/aux_cache_{self.fold_name}'))
+                cache_dir=variant_path(f'runs/aux_cache_{self.fold_name}'),
+                fit_end=train_end(self.fold_name))
         return self._aux[name]
 
     def cf_score(self):
@@ -211,7 +214,8 @@ class Context:
         if self._cf is None:
             from kairos.kernel.cf_signal import build_cf_score
             self._cf = build_cf_score(self.data, self.windows,
-                                      cache_dir=variant_path(f'runs/cf_cache_{self.fold_name}'))
+                                      cache_dir=variant_path(f'runs/cf_cache_{self.fold_name}'),
+                                      fit_end=train_end(self.fold_name))
         return self._cf
 
     def refit_score(self):
