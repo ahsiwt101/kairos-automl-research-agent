@@ -449,3 +449,71 @@ fixed in advance: recency +0.0002, importance weighting −0.0002, and `late_onl
 achieves a **perfect** distribution match — **−0.0024**, the worst of the four. Discarding
 78% of training rows costs more than the mismatch does. The mismatch is real and is not
 what limits DIN.
+
+---
+
+## 13. Porting to a second dataset found three silent-wrong-answer bugs
+
+The KuaiRand-1k transfer run was set up to answer a scientific question (does the
+personalisation ceiling hold when per-user history is 117x longer?). Before producing a
+single score it found three defects in our own code, all of the same shape as the leakage
+finding this project is built around: **a guard or an assumption that looks correct, is
+never exercised on Pure, and fails by producing wrong numbers rather than an error.**
+
+### 13.1 Side tables were indexed by position, not by id
+
+`dataset.py` sorted the video/user feature tables and read them back as `arr[video_id]`,
+on a comment asserting ids are "already 0..N-1 dense ints". That is true on Pure. On 1k,
+4,371,868 videos carry ids running to 4,371,899 - 32 gaps - so every video attribute after
+the first gap bound to the **wrong video**, with no error raised.
+
+Fixed by reindexing onto the full `0..max` id range, making position == id true by
+construction; absent ids become NaN, which is a visible absence rather than another
+video's value. Verified a no-op on Pure: all 114 cached columns byte-identical.
+
+### 13.2 The candidate sandbox bounded time but not memory
+
+A candidate that over-allocates does not die politely. The OS kills the **largest** process,
+which is the *parent* - it holds the columnar cache and every prewarmed signal. The first
+1k run therefore vanished with no traceback, no SUMMARY, and no ledger entry. Subprocess
+isolation contained exceptions but not memory pressure.
+
+Two attempted fixes failed, and the second failure is the more instructive:
+
+1. `resource.setrlimit(RLIMIT_AS)` in a `preexec_fn`. **On macOS that call raises**, and the
+   handler swallowed the error - so the guard was present, visible in code review, and
+   capped nothing. Strictly worse than no guard, because it looked like one.
+2. The test written for it passed anyway. The allocation bomb returned the wrong row count,
+   so the existing row-count contract check caught it *before memory was ever touched*. **A
+   test that passes for the wrong reason certifies an inert guard.**
+
+The working fix is a parent-side RSS watchdog polling every 0.5s: it measures resident
+pages, which is what the OS killer actually reacts to, and needs no rlimit support. The
+child now dies first with `stage='memory'` and an actionable hint, so the failure reaches
+the agent through the normal repair path. `experiments/verify_mem_guard.py` pins both
+directions with a contract-valid, page-touching bomb.
+
+### 13.3 Every derived-signal cache was shared across variants
+
+The columnar cache was made variant-aware; the caches one layer down - `fm_signal`,
+`refit`, `din`, `mf`, `cf`, `expert`, `aux` - were fixed path strings. A 1k run therefore
+`np.load`-ed **Pure's 1,436,609-row signal into an 11,713,045-row problem**. This is the
+identical mistake to 13.1, made one level of abstraction lower, by the same author, within
+the same hour.
+
+Fixed with a single `variant_path()` helper.
+`experiments/verify_variant_isolation.py` asserts both halves: Pure's eight paths are
+unchanged (no cached work invalidated) and no 1k path collides with a Pure one.
+
+### Why this belongs in the findings rather than the changelog
+
+None of the three would have surfaced on Pure, at any level of test coverage, because each
+is an assumption that happens to hold there. They surfaced within an hour of pointing the
+same code at a dataset built differently.
+
+That is an argument for the transfer run **independent of what it scores**: a second
+dataset functions as an assumption detector. It is also the strongest available evidence
+for this project's central claim - that a validation number can be confidently wrong, and
+that the defence is an independent check rather than more care. We wrote the auditor that
+catches this class of bug in the agent's work, and then produced three instances of it in
+our own.
