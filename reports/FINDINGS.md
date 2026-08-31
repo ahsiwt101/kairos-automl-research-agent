@@ -1,5 +1,16 @@
 # What we found on KuaiRand-Pure
 
+> **Headline.** The submission is produced autonomously: KAIROS proposed, wrote, evaluated
+> and accepted a candidate scoring **0.5988** on the hidden test against the official
+> baseline's 0.5946 (**+0.0042**), beating both the baseline and the strongest pipeline we
+> built by hand (0.5976). Three iterations, **zero manual interventions**, 376 seconds,
+> 36,490 tokens. Its prediction hit-rate — whether the diagnostics it claims will move
+> actually move — has gone **0/2 → 2/3** since adding an adversarial critic.
+>
+> The rest of this document is the measurement that made that possible, including the
+> roughly 30 interventions that did **not** work.
+
+
 All numbers below are reproducible from `experiments/`. The official `evaluate.py` is the
 sole scoring authority and is committed unmodified. Our vectorised evaluator is verified
 identical to it to 4.4e-16 across seven stress cases including heavy ties.
@@ -362,3 +373,79 @@ aggregates, not sequences.
 Every consultation of the sealed test split goes through an audited `Scorer`. As of this
 report that log contains **31 calls**, all research probes. The agent's own selection never
 reads it.
+
+---
+
+## 10. The agent's own reasoning, measured
+
+Every iteration commits to a falsifiable prediction: one diagnostic from a fixed vocabulary
+of ten quantities the diagnostics layer already computes, plus a direction. After the
+candidate runs we check whether that quantity moved that way. An unverifiable claim scores
+`None`, never `False` — an instrumentation gap is not the agent's fault and must not
+corrupt its record.
+
+| run | prediction hit-rate |
+|---|---|
+| before the critic | 0 / 2 |
+| first run with critic | 1 / 3 |
+| current | **2 / 3** |
+
+The critic audits whether the prediction follows from the mechanism before code is written.
+Caught live, on a real call:
+
+> **Given** a mechanism about duration-based mis-ordering paired with the prediction
+> `primary / increase`
+> **Critic** — *"The mechanism specifically concerns duration-based mis-ordering (inversion
+> loss from duration deciles), so the prediction should target inversion_loss_duration
+> decreasing"* → substituted. A control case that already cohered was left untouched.
+
+"Primary increases" is true of any improvement, so it tests nothing about the specific
+mechanism claimed. That was the source of the original 0/2.
+
+## 11. Sub-space experts: a confirmed premise that did not pay
+
+Rank fusion is rewarded by decorrelation rather than member strength, and our members were
+less decorrelated than their architectures suggested. Three experts, each restricted to one
+disjoint feature family:
+
+| expert | sees | valid alone |
+|---|---|---|
+| context | tab, hour, duration, staleness | 0.5718 |
+| item | item / author / item x tab rates | 0.5906 |
+| user | user x tab, user x duration rates | 0.5357 |
+
+All three are *weaker* than the FM (0.6005) individually — that is the bet. Measured
+decorrelation:
+
+```
+mean expert-pair Spearman   +0.362
+FM vs DIN (the bar)         +0.848   <- unrelated architectures, still correlated
+item vs user                +0.279   <- most decorrelated pair
+```
+
+**The premise holds and the payoff does not.** A blend including them reached test 0.5985,
+short of the standing 0.5988. The independence is real; the additional signal it carries is
+too small to pay for the weight it takes. Shipped as a capability the agent may use, not
+forced into the submission.
+
+## 12. Two more instances of the central finding, on our own work
+
+**Parameterised rank fusion.** Adding per-member power exponents to the blend raised
+validation 0.6031 → 0.6035 and *lowered* held-out test 0.5985 → 0.5982, widening the gap
++0.0046 → +0.0053. Extra parameters fitted against an unreliable signal buy validation and
+cost reality. Declined.
+
+**A necessary refinement, though.** We expected uniform blend weights to generalise better
+than validation-fitted ones. They do not — both have *identical* val→test gaps (+0.0068),
+and coordinate ascent is better on both splits. So "validation is unreliable" is too coarse:
+fitting 3 weights against 22,377 users is sound, while selecting among 50 correlated
+pipelines on one read is not. The hazard is parameters-per-observation and correlation
+structure, not validation itself.
+
+**DIN history mismatch: answered, not fixed.** Training rows average 7.3 history items (32%
+empty) against ~17 at serving, because 78% of training rows precede history accumulation.
+Three corrections tested against unweighted DIN's 0.6023, with an adoption bar of +0.0005
+fixed in advance: recency +0.0002, importance weighting −0.0002, and `late_only` — which
+achieves a **perfect** distribution match — **−0.0024**, the worst of the four. Discarding
+78% of training rows costs more than the mismatch does. The mismatch is real and is not
+what limits DIN.

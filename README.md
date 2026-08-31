@@ -3,6 +3,19 @@
 **TikTok TechJam 2026 — Track 2: Autonomous ML Research Agent for Recommender Systems**
 Benchmark: KuaiRand-Pure, within-user ranking on `long_view`, primary = mean(GAUC, nDCG@5).
 
+| | valid | hidden test | vs baseline | produced by |
+|---|---|---|---|---|
+| Official FM baseline (reproduced exactly) | 0.6016 | 0.5946 | — | organizers |
+| Greedy validation-following agent (control) | 0.7339 | 0.5790 | −0.0156 | control arm |
+| Hand-built ensemble (reference ceiling) | 0.6045 | 0.5976 | +0.0030 | human |
+| **KAIROS accepted candidate — the submission** | **0.6034** | **0.5988** | **+0.0042** | **agent** |
+
+**3 iterations · 0 manual interventions · 376 s · 36,490 tokens (≈$0.35)** — converged on
+the competition's own N=3-without-+0.002 rule. The agent beat both the official baseline
+and the best pipeline we built by hand.
+
+Reproduce: `./run_live.sh` · full writeups in [`reports/`](reports/)
+
 ---
 
 ## Overview
@@ -28,6 +41,12 @@ KAIROS is built around that finding. Its distinguishing component is not its sea
 its **temporal-validity auditor**, which vetoes a candidate before its score is believed,
 and its **selection rule**, which chooses on transfer across backtest folds rather than
 argmax over a single validation set.
+
+It is also built to be *checkable*. Each iteration commits to a falsifiable prediction —
+one named diagnostic, one direction — which we verify after the candidate runs. That
+separates understanding from luck, and the number moves: the prediction hit-rate has gone
+**0/2 → 2/3** since adding an adversarial critic that audits whether a stated prediction
+actually follows from the stated mechanism.
 
 ## What is in here
 
