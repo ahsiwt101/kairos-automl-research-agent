@@ -124,3 +124,16 @@ assert 'ok is False or (ok is None and required)' in _run, \
 assert 'unconfirmed_accept' in _run, \
     'an accept that could not be confirmed must be recorded as such'
 print("  [PASS] every accept is confirmed; disconfirmation blocks, flakiness is recorded")
+
+# --------------------------------------------------------------------------------------
+# Prewarming must never load two OpenMP runtimes into one process.
+# torch (baseline/refit/din/mf/cf/aux) and LightGBM (expert) each bundle their own; loading
+# both in the parent DEADLOCKED prewarm at 0% CPU for 55 minutes - worse than the abort the
+# design anticipated, because a hang is indistinguishable from slow work.
+_pw = _inspect.getsource(_Kairos._prewarm_caches)
+assert 'subprocess' in _pw, 'prewarm must build each primitive in its own subprocess'
+assert 'for label, expr in jobs' in _pw, 'prewarm must iterate primitives as isolated jobs'
+assert 'c.expert_score' not in _pw.split('jobs = ')[0], \
+    'no primitive may be called directly in the parent process'
+assert 'timeout=' in _pw, 'a wedged prewarm subprocess must not hang the run forever'
+print("  [PASS] prewarm isolates every primitive; no two runtimes share a process")

@@ -1,0 +1,6 @@
+  expert[context] seed0: valid 0.5715
+  expert[context] seed1: valid 0.5713
+  expert[item] seed0: valid 0.5903
+  expert[item] seed1: valid 0.5906
+  expert[user] seed0: valid 0.5361
+  expert[user] seed1: valid 0.5362

@@ -105,36 +105,48 @@ class Kairos:
         it could plausibly do both, so the fix is to make sure a candidate's ctx access
         never triggers a cold-cache torch import at all - only ever a cheap np.load.
         """
-        from kairos.agent.context import make_context
+        # Each primitive is built in its OWN subprocess.
+        #
+        # Prewarming used to run in-process, which was fine while every prewarmed signal was
+        # torch-backed. Adding expert_score (LightGBM) to the list put torch and lightgbm in
+        # one process - the precise OpenMP clash this method exists to prevent. It did not
+        # abort; it DEADLOCKED at 0% CPU, which is worse, because a crash is visible and a
+        # hang looks like slow work. One process per primitive means no two runtimes ever
+        # share an address space, and a failure in one cannot wedge the parent.
+        import subprocess as _sp
         from kairos.kernel.baseline_signal import AUX_COLUMNS
 
-        # Warm BOTH the working fold and the confirmation fold. Every ctx signal caches per
-        # FOLD (fm_signal_{fold}.npy, refit_cache/{fold}_...), and _backtest_confirm re-runs
-        # the candidate's own code against `confirm_fold`. Warming only the working fold
-        # therefore left the confirmation run to build those signals from scratch INSIDE the
-        # candidate subprocess - which is both the slow path and precisely the torch-beside-
-        # lightgbm situation this method exists to prevent.
-        #
-        # On Pure that cost ~1 min and never showed. On 1k it is two windowed FMs over
-        # 11.7M rows, so every large-gain candidate was rejected for exceeding its budget -
-        # reported as "the verifier is too expensive" when the real cause was a cold cache.
-        for fold_name in dict.fromkeys((self.fold_name, self.confirm_fold)):
-            c = make_context(fold_name)
-            _ = c.baseline_score
-            if 'refit' in self.prewarm:
-                _ = c.refit_score()
-            if 'din' in self.prewarm:
-                _ = c.din_score()
-            if 'expert' in self.prewarm:
-                for sub in ('context', 'item', 'user'):
-                    _ = c.expert_score(sub)
-            if 'mf' in self.prewarm:
-                _ = c.mf_factors(16)
-            if 'cf' in self.prewarm:
-                _ = c.cf_score()
+        jobs = [('baseline', 'c.baseline_score')]
+        if 'refit' in self.prewarm:
+            jobs.append(('refit', 'c.refit_score()'))
+        if 'din' in self.prewarm:
+            jobs.append(('din', 'c.din_score()'))
+        if 'expert' in self.prewarm:
+            jobs += [(f'expert:{sub}', f'c.expert_score({sub!r})')
+                     for sub in ('context', 'item', 'user')]
+        if 'mf' in self.prewarm:
+            jobs.append(('mf', 'c.mf_factors(16)'))
+        if 'cf' in self.prewarm:
+            jobs.append(('cf', 'c.cf_score()'))
         if 'aux' in self.prewarm:
-            for name in AUX_COLUMNS:
-                _ = c.auxiliary_signal(name)
+            jobs += [(f'aux:{n}', f'c.auxiliary_signal({n!r})') for n in AUX_COLUMNS]
+
+        # Both the working fold and the confirmation fold: signals cache per fold, and
+        # _backtest_confirm re-runs candidates against confirm_fold. Warming only the
+        # working fold left confirmation to build them inside the candidate sandbox.
+        for fold_name in dict.fromkeys((self.fold_name, self.confirm_fold)):
+            for label, expr in jobs:
+                code = (f"import sys; sys.path.insert(0,'.')\n"
+                        f"from kairos.agent.context import make_context\n"
+                        f"c = make_context({fold_name!r})\n"
+                        f"_ = {expr}\n")
+                r = _sp.run([self.python, '-c', code], capture_output=True, text=True,
+                            timeout=5400)
+                if r.returncode != 0:
+                    tail = (r.stderr or '').strip().splitlines()[-3:]
+                    raise RuntimeError(
+                        f"prewarm failed for {label} on {fold_name}:\n" + '\n'.join(tail))
+                print(f"  prewarm {fold_name}/{label}", flush=True)
 
     # ------------------------------------------------------------------ budget
     def budget(self):
