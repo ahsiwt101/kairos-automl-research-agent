@@ -92,4 +92,35 @@ tr = d.fold('official').idx['train']
 assert date[tr].max() <= TE, 'fold.idx[train] contains rows past the train split'
 print(f"  [PASS] fold.idx['train'] spans {date[tr].min()}-{date[tr].max()}, train split only")
 
+
+# --------------------------------------------------------------------------------------
+# Sealed mode must make the official test split unreachable, while leaving backtest folds
+# (whose test windows are inside the public-label region) usable for candidate confirmation.
+import os, subprocess as _sp
+_PROBE = """
+import sys; sys.path.insert(0,'.')
+import numpy as np
+from kairos.kernel.dataset import Scorer, LeakageError
+g = np.zeros(4, dtype=np.int64); y = np.array([0,1,0,1]); s = np.arange(4.0)
+blocked = allowed = None
+try:
+    Scorer(g, y, 'official/test', audit_path='/tmp/_sealprobe.log').score(s, 'probe')
+    blocked = False
+except LeakageError:
+    blocked = True
+try:
+    Scorer(g, y, 'backtest_a/test', audit_path='/tmp/_sealprobe.log').score(s, 'probe')
+    allowed = True
+except LeakageError:
+    allowed = False
+print(f'{blocked} {allowed}')
+"""
+_env = dict(os.environ, KAIROS_SEALED='1', PYTHONWARNINGS='ignore')
+_r = _sp.run([sys.executable, '-c', _PROBE], capture_output=True, text=True, env=_env)
+assert _r.returncode == 0, _r.stderr[-400:]
+_blocked, _allowed = _r.stdout.strip().split()
+assert _blocked == 'True', 'sealed mode must refuse the official test split'
+assert _allowed == 'True', 'sealed mode must still permit backtest confirmation'
+print("  [PASS] sealed mode blocks official/test and permits backtest folds")
+
 print("\nTRAIN-SPLIT-ONLY TESTS PASS")

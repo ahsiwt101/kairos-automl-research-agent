@@ -266,14 +266,33 @@ class LabelVault:
         return self._y[idx]
 
 
+SEALED = os.environ.get('KAIROS_SEALED', '0') != '0'
+
+
 class Scorer:
-    """The only route to sealed labels. Every call is audited."""
+    """The only route to sealed labels. Every call is audited.
+
+    KAIROS_SEALED=1 makes any consultation of the official test split RAISE.
+
+    The audit log records 60 consultations across the project, all post-hoc measurement of
+    completed experiments. That position - used to report, never to select - is true, but
+    it is unfalsifiable from the outside: nobody can prove a human who saw sixty test
+    scores was uninfluenced by them. Sealed mode replaces the promise with a mechanism, so
+    a campaign can be run end-to-end with the test split literally unreachable and the
+    audit log showing a single consultation at the end.
+    """
 
     def __init__(self, group_ids, y, name, audit_path='./runs/scorer_audit.log'):
         self._gid, self._y, self.name, self.audit_path = group_ids, y, name, audit_path
         self.calls = 0
 
     def score(self, scores, reason=''):
+        if SEALED and 'test' in self.name and not self.name.startswith('backtest'):
+            raise LeakageError(
+                f"KAIROS_SEALED=1: refusing to score '{self.name}'. The official test "
+                f"split is unreachable in sealed mode - this is what makes 'never selected "
+                f"on test' checkable rather than merely stated. Unset KAIROS_SEALED to "
+                f"consult it for final reporting.")
         from kairos.kernel.fastmetrics import fast_evaluate
         self.calls += 1
         m = fast_evaluate(self._gid, self._y, np.asarray(scores, dtype=np.float64))

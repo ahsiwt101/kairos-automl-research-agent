@@ -30,11 +30,18 @@ class Kairos:
                  eps=0.002, stall_limit=3, max_iters=50, max_seconds=6 * 3600,
                  seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True,
                  max_tokens_total=400_000, prior_summary=None, baseline_valid=0.6016,
-                 prewarm=('mf', 'cf', 'aux')):
+                 prewarm=('mf', 'cf', 'aux'), confirm_fold='backtest_a',
+                 min_iters=0):
         self.proposer = proposer
         self.fold_name = fold_name
         self.workdir = workdir
         self.eps, self.stall_limit = eps, stall_limit
+        # FAQ 2.9.1 lets a team declare its own eps, N and a minimum-iteration floor, so
+        # long as they are fixed before the run and recorded in the log. A floor exists
+        # because N=3 can end a run after three iterations - which satisfies the stopping
+        # rule but shows no trajectory, and the trajectory is what a research agent is
+        # actually being judged on.
+        self.min_iters = int(min_iters)
         self.max_iters, self.max_seconds = max_iters, max_seconds
         self.seeds, self.repair_attempts = seeds, repair_attempts
         # audit_enabled=False reproduces a conventional agent: write code, train, follow
@@ -69,6 +76,9 @@ class Kairos:
         # silent-vanish failure this guard exists to prevent.
         self.cand_mem_gb = float(os.environ.get('KAIROS_CAND_MEM_GB', '6'))
         self.cand_timeout = int(os.environ.get('KAIROS_CAND_TIMEOUT', '900'))
+        # the fold _backtest_confirm re-runs candidates against; warmed alongside the
+        # working fold so confirmation never pays a cold-cache cost inside the sandbox
+        self.confirm_fold = confirm_fold
         self._prewarm_caches()
         # The score a candidate must beat to be accepted. Defaults to the official FM
         # baseline, but a run that resumes work should be given the BEST KNOWN result
@@ -97,19 +107,31 @@ class Kairos:
         """
         from kairos.agent.context import make_context
         from kairos.kernel.baseline_signal import AUX_COLUMNS
-        c = make_context(self.fold_name)
-        _ = c.baseline_score
-        if 'refit' in self.prewarm:
-            _ = c.refit_score()
-        if 'din' in self.prewarm:
-            _ = c.din_score()
-        if 'expert' in self.prewarm:
-            for sub in ('context', 'item', 'user'):
-                _ = c.expert_score(sub)
-        if 'mf' in self.prewarm:
-            _ = c.mf_factors(16)
-        if 'cf' in self.prewarm:
-            _ = c.cf_score()
+
+        # Warm BOTH the working fold and the confirmation fold. Every ctx signal caches per
+        # FOLD (fm_signal_{fold}.npy, refit_cache/{fold}_...), and _backtest_confirm re-runs
+        # the candidate's own code against `confirm_fold`. Warming only the working fold
+        # therefore left the confirmation run to build those signals from scratch INSIDE the
+        # candidate subprocess - which is both the slow path and precisely the torch-beside-
+        # lightgbm situation this method exists to prevent.
+        #
+        # On Pure that cost ~1 min and never showed. On 1k it is two windowed FMs over
+        # 11.7M rows, so every large-gain candidate was rejected for exceeding its budget -
+        # reported as "the verifier is too expensive" when the real cause was a cold cache.
+        for fold_name in dict.fromkeys((self.fold_name, self.confirm_fold)):
+            c = make_context(fold_name)
+            _ = c.baseline_score
+            if 'refit' in self.prewarm:
+                _ = c.refit_score()
+            if 'din' in self.prewarm:
+                _ = c.din_score()
+            if 'expert' in self.prewarm:
+                for sub in ('context', 'item', 'user'):
+                    _ = c.expert_score(sub)
+            if 'mf' in self.prewarm:
+                _ = c.mf_factors(16)
+            if 'cf' in self.prewarm:
+                _ = c.cf_score()
         if 'aux' in self.prewarm:
             for name in AUX_COLUMNS:
                 _ = c.auxiliary_signal(name)
@@ -156,7 +178,7 @@ class Kairos:
         return json.load(open(cfg['out'])), None
 
     # ------------------------------------------------------------------ backtest confirm
-    def _backtest_confirm(self, prop, threshold=0.035, backtest_fold='backtest_a'):
+    def _backtest_confirm(self, prop, threshold=0.035, backtest_fold=None):
         """Re-run this candidate's OWN code against a backtest fold and measure its OWN
         valid-test gap there (backtest folds have a genuinely unsealed test window).
 
@@ -169,6 +191,7 @@ class Kairos:
         way, and this check does not need to know anything about what the candidate's code
         does internally to catch it.
         """
+        backtest_fold = backtest_fold or self.confirm_fold
         res = run_candidate(prop.code, backtest_fold, timeout=self.cand_timeout,
                             workdir=os.path.join(self.workdir, 'backtest_confirm'))
         if not res['ok']:
@@ -320,6 +343,11 @@ class Kairos:
                 break
             done, why = self.ledger.converged(self.eps, self.stall_limit,
                                               self.max_iters, self.max_seconds)
+            # the floor suppresses only the CONVERGENCE rule, never the hard caps
+            scored = sum(1 for e in self.ledger.entries
+                         if (e.outcome.valid_primary == e.outcome.valid_primary))
+            if done and scored < self.min_iters and 'stalled' in (why or ''):
+                done, why = False, None
             if done:
                 if verbose: print(f"\nCONVERGED: {why}")
                 break

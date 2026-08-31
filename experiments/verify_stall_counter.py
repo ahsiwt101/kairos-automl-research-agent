@@ -53,3 +53,16 @@ led.add(_miss(5))
 assert led.stall_counter(0.002) == 3, 'real misses must still advance the window'
 import os as _os; _os.remove('runs/_stall_crash_probe.jsonl')
 print("  [PASS] crashed iterations neither advance nor reset the convergence window")
+
+# --------------------------------------------------------------------------------------
+# A declared minimum-iteration floor (FAQ 2.9.1) must suppress the CONVERGENCE rule but
+# never the hard caps - a floor that could push a run past 50 iterations or 6h would break
+# a rule rather than exercise an allowance.
+import inspect as _i
+from kairos.agent.loop import Kairos as _K
+_src = _i.getsource(_K.run)
+assert 'self.min_iters' in _src, 'run() must honour the declared floor'
+assert "'stalled' in (why or '')" in _src, \
+    'the floor must apply only to the stall rule, not to iteration/wall-clock caps'
+assert 'min_iters' in str(_i.signature(_K.__init__)), 'min_iters must be declarable'
+print("  [PASS] declared floor suppresses convergence only, never the hard caps")

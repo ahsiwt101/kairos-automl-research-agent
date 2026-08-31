@@ -87,3 +87,21 @@ import numpy as _np
 assert (_np.bool_(True) is not True), 'premise of this test no longer holds'
 assert (bool(_np.bool_(True)) is True), 'bool() must yield the True singleton'
 print("  [PASS] confirm verdict is a real bool; unverifiable is None, not False")
+
+# --------------------------------------------------------------------------------------
+# Prewarming must cover the CONFIRMATION fold, not just the working fold.
+# Every ctx signal caches per fold, and _backtest_confirm re-runs the candidate against
+# `confirm_fold`. Warming only the working fold leaves the confirmation run to build those
+# signals inside the candidate subprocess - the slow path, and the torch-beside-lightgbm
+# situation prewarming exists to avoid. On Pure that cost ~1 min and hid; on KuaiRand-1k it
+# was two windowed FMs over 11.7M rows and rejected every large-gain candidate on a budget
+# overrun that was misreported as the verifier being intrinsically too expensive.
+_pw = _inspect.getsource(_Kairos._prewarm_caches)
+assert 'self.confirm_fold' in _pw, \
+    'prewarm must warm the confirmation fold as well as the working fold'
+assert 'dict.fromkeys' in _pw or 'set(' in _pw, \
+    'prewarm must not warm the same fold twice when they coincide'
+_bc = _inspect.getsource(_Kairos._backtest_confirm)
+assert 'self.confirm_fold' in _bc, \
+    '_backtest_confirm must use the same fold that was warmed, not a hardcoded default'
+print("  [PASS] prewarm covers the confirmation fold; confirmation uses the warmed fold")

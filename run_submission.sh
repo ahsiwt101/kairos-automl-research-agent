@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Reproduce the SUBMITTED KuaiRand-Pure result.
+#
+# Paths are relative to the repo root and the API key is read from the environment, so this
+# runs on any machine. An earlier script hardcoded an absolute home directory and sourced a
+# key file from a private scratchpad - which meant a judge could not run it at all.
+#
+#   export ANTHROPIC_API_KEY=sk-ant-...
+#   ./run_submission.sh
+#
+# Writes to runs/kairos_submission_repro/ so it never overwrites the archived campaign in
+# runs/kairos_agent_submission/.
+set -uo pipefail
+cd "$(dirname "$0")"
+
+: "${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY before running}"
+PY="${PY:-./.venv/bin/python}"
+[ -x "$PY" ] || PY=python3
+export PYTHONWARNINGS=ignore
+
+# Convergence rule, declared BEFORE the run and recorded here, as FAQ 2.9.1 permits:
+#   eps = 0.002 (organizer default)
+#   N   = 5     (a miss is cheap at ~$0.12/iteration; 3 ends a run before a trajectory
+#                is visible, and the trajectory is what Innovation and Impact are scored on)
+#   floor = 10  (minimum scored iterations before convergence may trigger)
+# Hard caps respected: 50 iterations, 6h wall-clock.
+exec "$PY" -u -c "
+import sys; sys.path.insert(0,'.')
+from kairos.agent.loop import Kairos
+from kairos.agent.proposer import TwoStageProposer
+from kairos.agent.prior import PRIOR_PURE
+
+p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
+k = Kairos(p, max_iters=50, max_seconds=6*3600, seeds=(0,1,2),
+           workdir='runs/kairos_submission_repro',
+           eps=0.002, stall_limit=5, min_iters=10,
+           max_tokens_total=400000, prior_summary=PRIOR_PURE,
+           baseline_valid=0.6016,
+           prewarm=('refit','din','expert','mf','cf','aux'))
+s = k.run()
+import json
+s['tokens_by_model'] = p.by_model
+print('SUMMARY'); print(json.dumps(s, indent=2, default=str))
+"
