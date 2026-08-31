@@ -1,6 +1,8 @@
-# dataset (194MB, downloaded from zenodo - see README)
-KuaiRand-Pure/
-KuaiRand-Pure.tar.gz
+# datasets (downloaded from zenodo - see README). Pure is 194MB; 1K/27K are multi-GB,
+# so match every variant rather than naming one - an unignored variant silently stages
+# gigabytes into the index.
+KuaiRand-*/
+KuaiRand-*.tar.gz
 
 # environment
 .venv/
@@ -9,6 +11,7 @@ __pycache__/
 
 # large intermediates; experiment results (json/jsonl/log) are tracked
 runs/cache/
+runs/cache_*/
 runs/*.npy
 
 # never commit credentials

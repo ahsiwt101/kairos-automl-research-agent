@@ -16,10 +16,22 @@ Two invariants this module exists to guarantee:
 import json, os, time
 import numpy as np
 
-DATA_DIR = './KuaiRand-Pure/data'
-CACHE_DIR = './runs/cache'
-STANDARD_LOGS = ('log_standard_4_08_to_4_21_pure.csv', 'log_standard_4_22_to_5_08_pure.csv')
-RANDOM_LOG = 'log_random_4_22_to_5_08_pure.csv'
+# KuaiRand ships three variants sharing one schema and one calendar (20220408-20220508).
+# Selecting by env var keeps every downstream `load()` call site untouched, so a transfer
+# run exercises the SAME code path as the tuned run - which is the point of the transfer.
+VARIANT = os.environ.get('KAIROS_VARIANT', 'pure').lower()
+if VARIANT not in ('pure', '1k', '27k'):
+    raise ValueError(f"KAIROS_VARIANT='{VARIANT}' not in pure|1k|27k")
+_SUF = {'pure': 'pure', '1k': '1k', '27k': '27k'}[VARIANT]
+_DIR = {'pure': 'KuaiRand-Pure', '1k': 'KuaiRand-1K', '27k': 'KuaiRand-27K'}[VARIANT]
+
+DATA_DIR = f'./{_DIR}/data'
+# separate cache per variant: the columnar cache is keyed by nothing but its path, so
+# sharing one directory across variants would serve Pure's columns for a 1k run
+CACHE_DIR = './runs/cache' if VARIANT == 'pure' else f'./runs/cache_{_SUF}'
+STANDARD_LOGS = (f'log_standard_4_08_to_4_21_{_SUF}.csv',
+                 f'log_standard_4_22_to_5_08_{_SUF}.csv')
+RANDOM_LOG = f'log_random_4_22_to_5_08_{_SUF}.csv'
 
 LABEL = 'long_view'
 # every feedback signal in the log; `long_view` is scored, the rest are auxiliary targets
@@ -37,8 +49,12 @@ OFFICIAL = {'train': (20220408, 20220421), 'valid': (20220422, 20220428),
 # simulating the whole select-then-submit procedure never touches hidden-test labels.
 # These are what let us measure the validation->test selection gap honestly.
 FOLDS = {
+    # Same calendar on every variant. Only Pure's test labels are withheld by the
+    # organizers; on 1k/27k the whole period is public, so the test window is scoreable
+    # directly - which is what makes those variants usable as a val->test generalisation
+    # probe with no submission budget.
     'official':   {'train': (20220408, 20220421), 'valid': (20220422, 20220428),
-                   'test': (20220429, 20220508), 'sealed': True},
+                   'test': (20220429, 20220508), 'sealed': VARIANT == 'pure'},
     # Backtest folds live ENTIRELY inside the public-label region (<= 20220428).  Their
     # windows are chosen so that valid+test both sit in the SPARSE logging regime
     # (~2 impressions/user/day, as the official valid/test do) rather than straddling the
@@ -79,9 +95,14 @@ def build_cache(data_dir=DATA_DIR, cache_dir=CACHE_DIR, force=False):
     manifest = {'n_rows': int(len(log)), 'built_at': time.strftime('%Y-%m-%d %H:%M:%S')}
 
     # video side
-    vb = pd.read_csv(os.path.join(data_dir, 'video_features_basic_pure.csv'))
-    vs = pd.read_csv(os.path.join(data_dir, 'video_features_statistic_pure.csv'))
-    uf = pd.read_csv(os.path.join(data_dir, 'user_features_pure.csv'))
+    vb = pd.read_csv(os.path.join(data_dir, f'video_features_basic_{_SUF}.csv'))
+    uf = pd.read_csv(os.path.join(data_dir, f'user_features_{_SUF}.csv'))
+    # video_features_statistic_* holds platform-wide counters with no timestamp, so it is
+    # excluded on temporal-validity grounds and nothing reads it back. On 1k/27k it is
+    # multi-GB, so parsing it would cost minutes to build a cache no code ever opens.
+    _vs_path = os.path.join(data_dir, f'video_features_statistic_{_SUF}.csv')
+    vs = (pd.read_csv(_vs_path) if VARIANT == 'pure' else
+          pd.DataFrame({'video_id': vb['video_id']}))
 
     def save(name, arr):
         np.save(os.path.join(cache_dir, name + '.npy'), arr)
@@ -102,10 +123,19 @@ def build_cache(data_dir=DATA_DIR, cache_dir=CACHE_DIR, force=False):
             save('log_' + c, arr)
     manifest['log_columns'] = list(log.columns)
 
-    # side tables keyed by dense id (video_id / user_id are already 0..N-1 dense ints)
-    vb = vb.sort_values('video_id').reset_index(drop=True)
-    vs = vs.sort_values('video_id').reset_index(drop=True)
-    uf = uf.sort_values('user_id').reset_index(drop=True)
+    # Side tables are read back by POSITION (arr[video_id]), so position must equal id.
+    # That holds on Pure by luck, not by contract: 1k lists 4,371,868 videos whose ids run
+    # to 4,371,899 - 32 gaps. Sorting alone would shift every row after the first gap and
+    # bind video attributes to the wrong video silently. Reindexing onto the full 0..max
+    # range makes position == id true by construction; missing ids become NaN, which is a
+    # visible absence rather than another video's value. No-op on Pure.
+    def _align(df, key):
+        df = df.drop_duplicates(key).set_index(key).sort_index()
+        full = df.reindex(np.arange(0, int(df.index.max()) + 1))
+        return full.reset_index()
+    vb = _align(vb, 'video_id')
+    vs = _align(vs, 'video_id')
+    uf = _align(uf, 'user_id')
     for tag, df in (('vb', vb), ('vs', vs), ('uf', uf)):
         for c in df.columns:
             col = df[c]
