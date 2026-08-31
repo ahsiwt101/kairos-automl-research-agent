@@ -60,3 +60,55 @@ PRIOR_PURE = (
     "streaming aggregates over raw ctx.data.y_raw; use ctx.frozen_prefix, which takes an "
     "explicit horizon."
 )
+
+
+# ---------------------------------------------------------------------------- transfer
+# The 1k prior is deliberately NOT PRIOR_PURE with the numbers swapped.
+#
+# PRIOR_PURE carries empirical conclusions measured in Pure's regime - an incumbent score,
+# a ruled-out list, per-primitive standalone strengths. 1k is a materially different
+# regime (5,143 rows/user vs 44; 4.37M items vs 7,583; no train->serve density collapse),
+# so those conclusions are exactly the things whose transfer is in question. Feeding them
+# in would answer "do Pure's findings hold?" while looking like "does the agent
+# generalise?", and a skeptic would rightly say the answer was handed over.
+#
+# What survives is only what is true independent of the dataset: one architectural
+# pathology with a stated mechanism, one theorem about the metric, the leakage rule, and
+# an honest statement of which primitives are actually wired on this variant.
+PRIOR_1K = (
+    "NEW BENCHMARK. You have not seen this dataset before and no prior run has been made "
+    "on it. There is no incumbent beyond the official FM baseline. Nothing below is a "
+    "measurement on THIS data - treat every claim as a hypothesis to test, not a result. "
+
+    "ARCHITECTURAL PATHOLOGY (mechanism, not measurement). Feeding an already-calibrated "
+    "continuous score (ctx.baseline_score) into a downstream tree as one feature among "
+    "many tends to LOSE information: a tree shatters a smooth monotone score into step "
+    "functions. This is a property of trees, not of any one dataset, so expect it here "
+    "too - but it is still a hypothesis you may test. "
+
+    "CAPABILITY: train_cfg mode='scores' lets you train your own model(s) inside build() "
+    "and blend their FINAL OUTPUTS by within-user rank fusion, instead of concatenating "
+    "everything into one feature matrix for a single tree. Fusion is rewarded by "
+    "DECORRELATION between members, not by member strength - a weak but uncorrelated "
+    "member can pay more than a strong correlated one. "
+
+    "PROVABLE NO-OP (theorem, holds on any dataset). GAUC and nDCG depend only on "
+    "within-user ORDER. Any monotone map applied to the final score - temperature "
+    "scaling, per-user percentile transforms, sigmoid rescaling - leaves that order "
+    "unchanged and therefore cannot move either metric. Do not spend an iteration on one. "
+    "For the same reason, any feature that is CONSTANT within a user contributes nothing "
+    "to the ranking, however predictive it looks globally. "
+
+    "LEAKAGE. Never build a streaming aggregate over raw ctx.data.y_raw or ctx.data.time_ms "
+    "without a per-fold horizon: a validation row must not see labels from inside its own "
+    "evaluation window. Use ctx.frozen_prefix, which takes an explicit horizon. The "
+    "harness independently backtest-confirms every accepted candidate, so a leak costs you "
+    "the iteration rather than reaching the submission. "
+
+    "PRIMITIVES WIRED ON THIS VARIANT: ctx.baseline_score (the official FM's own "
+    "out-of-sample score) and ctx.refit_score() (the same FM given the best data per "
+    "split). ctx.din_score / ctx.mf_factors / ctx.cf_score / ctx.expert_score / "
+    "ctx.auxiliary_signal are NOT available on this run and will raise - do not plan "
+    "around them. You still have ctx.col, ctx.video_attr, ctx.user_attr, ctx.frozen_prefix "
+    "and ctx.check, which is enough to build strong frozen-window features."
+)

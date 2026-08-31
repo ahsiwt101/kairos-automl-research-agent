@@ -29,7 +29,8 @@ class Kairos:
     def __init__(self, proposer, fold_name='official', workdir='runs/kairos',
                  eps=0.002, stall_limit=3, max_iters=50, max_seconds=6 * 3600,
                  seeds=(0, 1, 2), repair_attempts=2, python=None, audit_enabled=True,
-                 max_tokens_total=400_000, prior_summary=None, baseline_valid=0.6016):
+                 max_tokens_total=400_000, prior_summary=None, baseline_valid=0.6016,
+                 prewarm=('mf', 'cf', 'aux')):
         self.proposer = proposer
         self.fold_name = fold_name
         self.workdir = workdir
@@ -54,6 +55,12 @@ class Kairos:
         self.auditor = Auditor(self.data, self.fold)
         self.hz = window_horizons(self.data.date.astype(np.int64), OFFICIAL_WINDOWS)
         np.save(os.path.join(workdir, 'hz.npy'), self.hz)
+        # Which torch-backed primitives to compute up front. Prewarming exists to dodge the
+        # torch/lightgbm OpenMP abort, so anything NOT prewarmed must be unreachable rather
+        # than lazily built inside a candidate subprocess - see Context(blocked=...).
+        # On KuaiRand-Pure (1.4M rows) the full set costs ~4 min; on 1k (11.7M) it is ~1h,
+        # so a transfer probe trims it deliberately and tells the agent what it has.
+        self.prewarm = tuple(prewarm)
         self._prewarm_caches()
         # The score a candidate must beat to be accepted. Defaults to the official FM
         # baseline, but a run that resumes work should be given the BEST KNOWN result
@@ -84,10 +91,20 @@ class Kairos:
         from kairos.kernel.baseline_signal import AUX_COLUMNS
         c = make_context(self.fold_name)
         _ = c.baseline_score
-        _ = c.mf_factors(16)
-        _ = c.cf_score()
-        for name in AUX_COLUMNS:
-            _ = c.auxiliary_signal(name)
+        if 'refit' in self.prewarm:
+            _ = c.refit_score()
+        if 'din' in self.prewarm:
+            _ = c.din_score()
+        if 'expert' in self.prewarm:
+            for sub in ('context', 'item', 'user'):
+                _ = c.expert_score(sub)
+        if 'mf' in self.prewarm:
+            _ = c.mf_factors(16)
+        if 'cf' in self.prewarm:
+            _ = c.cf_score()
+        if 'aux' in self.prewarm:
+            for name in AUX_COLUMNS:
+                _ = c.auxiliary_signal(name)
 
     # ------------------------------------------------------------------ budget
     def budget(self):
