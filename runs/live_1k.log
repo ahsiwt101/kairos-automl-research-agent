@@ -1,1 +1,6 @@
   prewarm official/baseline
+  prewarm official/refit
+  prewarm backtest_a/baseline
+  prewarm backtest_a/refit
+[1] ROLLBACK  history   Replace the single-tree-on-everything setup with a within-us
+[2] ACCEPT    history   pred:HIT  valid 0.6522+-0.0000 (+0.0744)  stall=0  Replace the single-tree-on-everything setup with
