@@ -18,147 +18,30 @@ backtest-confirmed. Full trajectory in
 [`reports/ITERATION_LOG.md`](reports/ITERATION_LOG.md), numbers in
 [`reports/RESULTS.md`](reports/RESULTS.md).
 
-**How the run ended.** A convergence rule was declared before the run and recorded in
-[`run_submission.sh`](run_submission.sh), as FAQ 2.9.1 permits: ε = 0.002, **N = 5**,
-minimum-iteration floor **10**. Both stopping conditions became true at the same moment:
-after iteration 10 the stall counter stood at 10 (>= N=5) with the floor satisfied, **and**
-the self-imposed 150k token budget was spent. The loop checks the budget first, so the log
-records `STOPPED: token budget exhausted (164,789 >= 150,000)` — verbatim in
-[`runs/live_submission.log`](runs/live_submission.log). The run summary reports both
-separately (`stop_kind: token_budget`, `converged_predicate: true`) rather than collapsing
-them, because "converged" alone would misdescribe how the loop exited. The scored
-submission is the validation-best checkpoint at the point the run stopped, which is what
-FAQ 2.9.1(c) requires; the hard caps (50 iterations, 6 h) were never approached.
+A greedy agent that trusts its validation score reaches **0.7339 on validation** here — and
+**0.5790 on the hidden test set**, below the baseline it set out to beat. KAIROS is built
+around that finding: it audits every result before believing it. The details are
+[below](#the-finding-this-is-built-on); the caveats on the numbers above are
+[here](#notes-on-the-numbers).
 
-### What "0 interventions" does and does not mean
-
-No human touched the run once it
-started: no code was edited, no candidate was hand-fixed, no result was overridden. But the
-run is *seeded* with [`PRIOR_PURE`](kairos/agent/prior.py) — a human-written lab notebook
-carrying the incumbent's validation score, a "WHAT WON" section naming the winning
-architecture, and a ruled-out list distilled from roughly thirty earlier experiments. The
-candidate accepted at iteration 1 implements the architecture that prior describes. So the
-honest statement is **zero interventions within the run, plus one human-authored prior**,
-and the prior is a substantial input. It carries a contamination rule (nothing in it may
-cite or derive from the test split) and its provenance is in the module docstring. Reported
-this way because a judge who finds `prior.py` after reading a bare "0 manual interventions"
-should find it unsurprising rather than misleading.
-
-**The submission is the agent's output by construction.** The hand-built ensemble in the
-table above is a *reference ceiling* we measured to know what the agent was competing
-against — it was never a candidate for the submission slot. That matters because it has
-HIGHER validation (0.6045) and LOWER test (0.5976) than the agent's candidate: if the
-submission had been chosen on validation across both, the hand-built one would have won and
-scored worse. It was excluded because it is not agent-produced, not because of its scores.
-It is committed as [`reference_handbuilt_ensemble.csv`](reference_handbuilt_ensemble.csv) —
-named so it cannot be mistaken for a submission — and scores 0.5976 under
-`experiments/verify_submission.py reference_handbuilt_ensemble.csv`.
-
-**Seed determinism.** The accepted candidate reports `valid_std: 0.0` from a single seed.
-That is not a violation of the >=3-seed rule used elsewhere in this repo: under
-`mode='scores'` the candidate performs rank fusion of already-computed signals, which
-involves no stochastic training, so repeated seeds are bit-identical by construction.
-Claims about *trained* models in this repo use >=3 seeds.
-
-Reproduce the submitted run: `export ANTHROPIC_API_KEY=... && ./run_submission.sh` ·
-re-score the shipped submission in ~30 s with no API key:
-`./.venv/bin/python experiments/verify_submission.py` ·
-full writeups in [`reports/`](reports/)
-
-**Contents** — [Results](#how-this-scores-against-the-judging-criteria) ·
-[The finding](#the-finding-this-is-built-on) ·
-[Iteration-by-iteration](#the-submitted-run-iteration-by-iteration) ·
+**Contents** — [The finding this is built on](#the-finding-this-is-built-on) ·
 [How the agent works](#how-the-agent-works) ·
-[Deliverables](#deliverables) ·
+[The run, iteration by iteration](#the-submitted-run-iteration-by-iteration) ·
+[When things go wrong](#when-things-go-wrong) ·
+[What it cost](#what-it-cost) ·
 [Setup](#setup) · [Reproducing](#reproducing) ·
 [Rules compliance](#rules-compliance) ·
-[Limitations](#limitations-honestly)
+[Notes on the numbers](#notes-on-the-numbers) ·
+[Limitations](#limitations-honestly) ·
+[Deliverables index](#deliverables)
 
-This README is self-contained: every number a judge needs is below, with links to the raw
-artifact behind each one. Nothing essential lives only in `reports/`.
-
----
-
-## How this scores against the judging criteria
-
-Every claim below links to the artifact that evidences it. Nothing here is asserted without
-something committed to check it against.
-
-### Technical Execution (35%) — primary metric and robustness
-
-**Primary metric.** `score_dataset` = **+0.0037** (GAUC +0.0043, nDCG@5 +0.0031) on the
-hidden test set, from the validation-best checkpoint, scored once.
-[`reports/RESULTS.md`](reports/RESULTS.md) · re-score it yourself in ~30 s with no API key:
-`./.venv/bin/python experiments/verify_submission.py`.
-
-Read against the attainable range rather than against 1.0: the organizers note a perfect
-ranking reaches 0.8645 and random sits at 0.4753. Our own decomposition says the *honest*
-ceiling is far lower still — context plus item quality alone reaches 0.5955, already above
-the official baseline, and every personalisation feature combined adds ~0.006
-([`reports/FINDINGS.md`](reports/FINDINGS.md) §6). On this benchmark +0.0037 is a
-meaningful share of what is actually available, not a small share of what is theoretically
-available.
-
-**Robustness** — judged on how failure is handled, not whether it occurs. Every mechanism
-below exists because the corresponding failure actually happened and is recorded:
-
-| failure mode | how the agent handles it | evidence |
-|---|---|---|
-| candidate raises | traceback fed back to the coder; up to 2 repair attempts, planner not re-invoked | `ledger_errors.jsonl` |
-| candidate hangs | per-candidate wall-clock budget, process killed and reported | `verify_mem_guard.py` |
-| candidate exhausts memory | parent-side RSS watchdog kills the child, not the parent | `verify_mem_guard.py` |
-| candidate leaks a label | structural audit, then independent backtest confirmation on every accept | `verify_agent_mechanisms.py` |
-| a check cannot be run | reported as *unverifiable*, never as *disproved* | `verify_agent_mechanisms.py` |
-| cached signal is the wrong shape | refused at load with both row counts named | `verify_variant_isolation.py` |
-
-Ten test suites run green; `experiments/verify_*.py` is the whole list.
-
-### Innovation & Problem Insight (20%) — what the agent targeted, and why
-
-The distinctive claim is not the search but the **verification**. A greedy
-validation-following agent — our control arm — reached **0.7339 on validation and 0.5790 on
-hidden test**, i.e. *below* the official baseline while appearing to have solved the task.
-Selection regret measured at **0.0131** ([`reports/FINDINGS.md`](reports/FINDINGS.md) §7).
-KAIROS is built around that finding:
-
-1. **A temporal-validity auditor** that vetoes a candidate before its score is believed.
-2. **Transfer-based selection** across three temporal backtest folds, not argmax on one
-   validation set.
-3. **Backtest confirmation of every accepted candidate**, using two independent leak
-   signals — a valid−test gap check and an absolute-ceiling check — because each catches a
-   leak shape the other misses.
-4. **Falsifiable predictions**: each iteration commits to one named diagnostic and a
-   direction, checked afterwards. This is what let us *disprove our own claim* that an
-   adversarial critic improved reasoning — see Limitations.
-5. **A contamination rule on the agent's prior**: nothing fed to the agent may cite or
-   derive from the test split ([`kairos/agent/prior.py`](kairos/agent/prior.py)).
-
-Across the stack, not just the model: features, objective, model family, ensembling,
-*and the evaluation loop itself* — which is where the actual finding is.
-
-### Impact & Relevance (20%) — autonomy
-
-**0 manual interventions within the run**, plus one human-authored prior, stated in full
-[above](#what-0-interventions-does-and-does-not-mean). The agent proposed, coded, ran,
-evaluated, and accepted or rejected each candidate on its own evaluation of results. Ten
-iterations, two accepts, both independently confirmed.
-
-### Feasibility & Practicality (15%) — resource consumption
-
-| | |
-|---|---|
-| Tokens (in + out) | **164,789** |
-| Agent wall-clock | **941 s** (~16 min) |
-| Iterations | **10** of the 50 cap |
-| GPU-hours | **0** — CPU only |
-| Approximate API cost | **≈$1.37** |
-
-The whole submitted campaign costs about a dollar and a quarter and finishes inside twenty
-minutes on a laptop, which is the point: this is a loop a researcher could actually run.
+Everything is in this file — the tables below are the evidence, not pointers to it. The
+documents in [`reports/`](reports/) are backing detail for anyone who wants to dig.
 
 ---
 
 ## The finding this is built on
+
 
 *Self-contained: the tables below are the evidence, not pointers to it.
 Full workings in [`reports/FINDINGS.md`](reports/FINDINGS.md).*
@@ -185,7 +68,25 @@ worst. With honest features, LambdaRank genuinely *is* the best. So the greedy a
 just pick a bad candidate — it learns the *opposite* lesson about its own objective and
 carries it into every later iteration.
 
-Which selection signal should an agent trust?
+### Why it happens
+
+The cause is structural, not a coding slip. Evaluation ranks each user's impression list
+**as a set**. A time-ordered history feature lets a validation row see the labels of its own
+list-mates — which is exactly the quantity the metric asks the model to predict, and which
+does not exist for test rows, whose labels stop at the horizon. So the feature is a genuine
+predictor on validation and dead weight on test.
+
+A pipeline built the natural way — each user's and item's history summarised as a
+`long_view` rate, computed with a correct time-ordered prefix so no row sees its *own*
+label — reaches **validation 0.7158** against a 0.8484 validation oracle, while its
+**hidden-test score falls to 0.5749**. In this regime validation gain and test gain are
+*anti-correlated*.
+
+The fix is to freeze every aggregate at the **start of its evaluation window** rather than
+at each row's own timestamp. That collapses the validation→test gap from **+0.1409 to
++0.0070**, and it is why every feature primitive in this repo takes an explicit horizon.
+
+### Which signal should the agent trust?
 
 | selection signal | rank correlation with hidden test |
 |---|---|
@@ -262,7 +163,38 @@ wrong rather than loud. A second dataset is an assumption detector, independent 
 
 ---
 
+## How the agent works
+
+
+A single loop, roughly 300 lines in [`kairos/agent/loop.py`](kairos/agent/loop.py):
+
+1. **Propose** — a two-stage LLM step. Opus 5 plans a hypothesis, its *mechanism*, and one
+   falsifiable prediction (a named diagnostic and a direction). Sonnet 5 writes the code. A
+   critic pass audits whether the prediction actually follows from the mechanism.
+2. **Audit statically** — an allowlisted sandbox; outcome columns are blocked at
+   `ctx.col()`; a leakage probe requires that any user-level statistic derived from a new
+   primitive has exactly zero within-user variance.
+3. **Run in isolation** — a subprocess bounded in both time and memory, with an RSS
+   watchdog so an over-allocating candidate cannot take the parent down.
+4. **Evaluate** — vectorised GAUC/nDCG@5, verified identical to the organizers'
+   `evaluate.py` to 4.4e-16 across seven stress cases including heavy ties, and 13× faster.
+5. **Confirm** — every accepted candidate is re-run against a backtest fold, checked on two
+   independent leak signals (valid−test gap, absolute ceiling).
+6. **Score the prediction** — did the diagnostic move as promised? Recorded as HIT, miss, or
+   *unverifiable* — never silently as a miss.
+7. **Decide** — accept only on validation improvement plus confirmation; log the outcome,
+   the code diff, and any error and recovery.
+
+The agent's action space is the `ctx` API in
+[`kairos/agent/context.py`](kairos/agent/context.py): frozen-window label aggregates with an
+explicit horizon, out-of-sample model scores (FM, DIN, implicit-ALS MF, item-item CF,
+disjoint sub-space experts), item and user attributes, and a `mode='scores'` path that lets
+a candidate train its own models and fuse their outputs at rank level.
+
+---
+
 ## The submitted run, iteration by iteration
+
 
 Every iteration, verbatim from the ledger. Generated by `experiments/export_run_log.py`;
 full hypotheses, mechanisms and code diffs in
@@ -296,124 +228,62 @@ worthwhile if the unflattering answer is reported too.
 
 ---
 
-## How the agent works
+## When things go wrong
 
-A single loop, roughly 300 lines in [`kairos/agent/loop.py`](kairos/agent/loop.py):
 
-1. **Propose** — a two-stage LLM step. Opus 5 plans a hypothesis, its *mechanism*, and one
-   falsifiable prediction (a named diagnostic and a direction). Sonnet 5 writes the code. A
-   critic pass audits whether the prediction actually follows from the mechanism.
-2. **Audit statically** — an allowlisted sandbox; outcome columns are blocked at
-   `ctx.col()`; a leakage probe requires that any user-level statistic derived from a new
-   primitive has exactly zero within-user variance.
-3. **Run in isolation** — a subprocess bounded in both time and memory, with an RSS
-   watchdog so an over-allocating candidate cannot take the parent down.
-4. **Evaluate** — vectorised GAUC/nDCG@5, verified identical to the organizers'
-   `evaluate.py` to 4.4e-16 across seven stress cases including heavy ties, and 13× faster.
-5. **Confirm** — every accepted candidate is re-run against a backtest fold, checked on two
-   independent leak signals (valid−test gap, absolute ceiling).
-6. **Score the prediction** — did the diagnostic move as promised? Recorded as HIT, miss, or
-   *unverifiable* — never silently as a miss.
-7. **Decide** — accept only on validation improvement plus confirmation; log the outcome,
-   the code diff, and any error and recovery.
+A research loop is judged by what it does with failure, not by avoiding it. Every mechanism
+here exists because the failure actually happened during this project and is recorded in
+the logs.
 
-The agent's action space is the `ctx` API in
-[`kairos/agent/context.py`](kairos/agent/context.py): frozen-window label aggregates with an
-explicit horizon, out-of-sample model scores (FM, DIN, implicit-ALS MF, item-item CF,
-disjoint sub-space experts), item and user attributes, and a `mode='scores'` path that lets
-a candidate train its own models and fuse their outputs at rank level.
-
----
-
-## Deliverables
-
-Where each item the track asks for lives in this repo.
-
-| # | Deliverable | Where |
+| failure | what the agent does | pinned by |
 |---|---|---|
-| 1 | Written project description (Devpost) | [`reports/DEVPOST.md`](reports/DEVPOST.md) — includes tools, APIs, libraries and datasets used |
-| 2 | Public repository with a README | this file; setup, reproduction steps, limitations and contributions below |
-| 3 | Per-iteration run log — hypothesis, code diff, metrics, error/recovery events | [`reports/ITERATION_LOG.md`](reports/ITERATION_LOG.md) (Pure) · [`reports/ITERATION_LOG_1K.md`](reports/ITERATION_LOG_1K.md) (1k bonus) · raw ledgers in [`runs/kairos_submission_repro/`](runs/kairos_submission_repro/) |
-| 3 | Manual-intervention summary | **0 within the run**, plus one human-authored prior — stated in full [above](#what-0-interventions-does-and-does-not-mean) and in [`reports/RESULTS.md`](reports/RESULTS.md) |
-| 4 | Final model output in the starter-kit schema | [`submission.csv`](submission.csv) — 170,588 rows, passes `python3 submit.py --check` |
-| 4 | Results table + absolute delta over the baseline | [`reports/RESULTS.md`](reports/RESULTS.md), generated by `experiments/results_table.py` |
-| 4 | Resource usage — tokens, wall-clock, iterations, GPU-hours | [`reports/RESULTS.md`](reports/RESULTS.md) — 164,789 tokens, 941 s, 10/50 iterations, 0 GPU-hours |
-| — | Bonus benchmark (KuaiRand-1k) | [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md) |
+| candidate raises an exception | traceback goes back to the coder; up to 2 repair attempts, planner not re-invoked | `ledger_errors.jsonl` |
+| candidate hangs | per-candidate wall-clock budget; process killed and reported as a normal failure | `verify_mem_guard.py` |
+| candidate exhausts memory | parent-side RSS watchdog kills the child, so the run survives | `verify_mem_guard.py` |
+| candidate leaks a label | structural audit, then independent backtest confirmation on every accept | `verify_agent_mechanisms.py` |
+| a check cannot be run at all | reported as *unverifiable*, never as *disproved* | `verify_agent_mechanisms.py` |
+| a cached signal is the wrong shape | refused at load, with both row counts named | `verify_variant_isolation.py` |
 
-Everything in Deliverables 3 and 4 is **generated from run artifacts**, not typed by hand:
-`experiments/export_run_log.py` renders the ledgers, `experiments/results_table.py` renders
-the results table, and `experiments/verify_submission.py` re-scores `submission.csv` with the
-organizers' own `evaluate.py` and exits non-zero if any reported metric has drifted.
-
-### The rest of `reports/`
-
-| file | what it is |
-|---|---|
-| [`FINDINGS.md`](reports/FINDINGS.md) | the full technical record — every experiment, including the ~30 that produced nothing |
-| [`DATA_DISCIPLINE.md`](reports/DATA_DISCIPLINE.md) | exactly which rows each model is fitted on, and the one ambiguous case |
-| [`BUILD_REVIEW.md`](reports/BUILD_REVIEW.md) | a self-review of the build, written mid-project |
-| [`UPDATE.md`](reports/UPDATE.md) | what changed after that review |
-| [`RESEARCH_PROPOSALS.md`](reports/RESEARCH_PROPOSALS.md) | twelve proposed research directions, scored against measurement — 1 of 12 paid off |
-
-The last three are **historical**: they describe the earlier 3-iteration campaign and carry
-a banner saying so. They are kept because the negative results and the retracted claims in
-them are part of the evidence, not despite it.
+Ten test suites run green — `experiments/verify_*.py` is the complete list, and each one
+was written the day the corresponding thing broke.
 
 ---
 
-## Overview
+## What it cost
 
-Most agents for this task are a loop: propose a change, train, read the validation score,
-keep it if it went up. On this benchmark that loop is actively harmful, and we can measure
-how harmful.
 
-A pipeline built the natural way — summarise each user's and item's history as a
-long_view rate, computed with a correct time-ordered prefix so no row sees its own label —
-reaches **validation 0.7158**, close to the 0.8484 validation oracle, while its **hidden-test
-score falls to 0.5749**, below the 0.5946 baseline it was trying to beat. Validation gain
-and test gain are *anti-correlated* in this regime.
-
-The cause is structural. Evaluation ranks each user's impression list **as a set**. A
-time-ordered history feature lets a validation row see the labels of its own list-mates —
-which is exactly the quantity the metric asks the model to predict, and which does not
-exist for test rows, whose labels stop at the horizon. The fix is to freeze every
-aggregate at the **start of its evaluation window**, which collapses the validation→test
-gap from +0.1409 to +0.0070.
-
-KAIROS is built around that finding. Its distinguishing component is not its search but
-its **temporal-validity auditor**, which vetoes a candidate before its score is believed,
-and its **selection rule**, which chooses on transfer across backtest folds rather than
-argmax over a single validation set.
-
-It is also built to be *checkable*. Each iteration commits to a falsifiable prediction —
-one named diagnostic, one direction — which we verify after the candidate runs. That
-separates understanding from luck. On the submitted campaign the agent's predictions scored
-**1 of 10**: it beat the baseline while the diagnostics it named largely did not move. We
-report that rather than the flattering earlier figure — see [Limitations](#limitations-honestly).
-
-## What is in here
-
-| path | what it is |
+| | |
 |---|---|
-| `kairos/kernel/fastmetrics.py` | vectorised GAUC / nDCG@5, exact to 4.4e-16 vs the official `evaluate.py`, 12x faster |
-| `kairos/kernel/dataset.py` | cached columnar loader; test labels sealed behind an audited `Scorer` |
-| `kairos/kernel/causal.py` | streaming prefix aggregates **and** window-frozen aggregates |
-| `kairos/kernel/frozenfeat.py` | deployment-faithful feature matrix + per-fold window schedules |
-| `kairos/kernel/diagnostics.py` | per-slice headroom attribution and pairwise inversion attribution |
-| `kairos/kernel/candidates.py` | pipeline pool spanning the leaky↔honest axis |
-| `kairos/agent/auditor.py` | temporal-validity checks; BLOCK vetoes a candidate |
-| `kairos/agent/sandbox.py` | AST allowlist + subprocess isolation for LLM-authored code |
-| `kairos/agent/selection.py` | transfer / stability / shrinkage corrections to argmax |
-| `kairos/agent/ledger.py` | per-iteration run log; also the stall-budget accounting |
-| `kairos/agent/loop.py` | the controller |
-| `experiments/` | every experiment and every contract test |
+| Tokens (in + output) | **164,789** |
+| Wall-clock | **941 s** (~16 min) |
+| Iterations | **10** of the 50 cap |
+| GPU-hours | **0** — CPU only, on a laptop |
+| API cost | **≈$1.37** |
 
-The official starter kit (`evaluate.py`, `data.py`, `baseline.py`, `submit.py`,
-`ablation_features.py`, `baseline_scores.json`) is committed **byte-for-byte unmodified**;
-`evaluate.py` is the sole authority on scoring. The organizers' original README is
-preserved verbatim as `STARTER_KIT_README.md` (renamed only so GitHub displays this file).
+The whole submitted campaign is about a dollar and a quarter and finishes inside twenty
+minutes without a GPU. That is the point: a loop a researcher could actually afford to run
+on every idea they have.
+
+---
+
+## Verified reproduction of the official baseline
+
+
+Seeds 0–4, matching the published protocol:
+
+| | ours | published |
+|---|---|---|
+| valid primary | 0.6016 | 0.6016 |
+| test primary | 0.5946 | 0.5946 |
+| test std (5 seeds) | 0.0008 | 0.0008 |
+| test GAUC / nDCG@5 | 0.6610 / 0.5282 | 0.6610 / 0.5282 |
+
+Row order is also byte-identical to `data.load()` on all three splits — checked because
+submission alignment is positional and `(user_id, video_id)` is not unique (3.06% of test
+rows are repeated pairs).
 
 ## Setup
+
 
 ```bash
 # dataset (194 MB, no registration)
@@ -432,6 +302,7 @@ into the same process. Everything here keeps them in separate processes. The doc
 wrong numbers, which is not acceptable on a benchmark.
 
 ## Reproducing
+
 
 ```bash
 # the headline number, straight from the shipped submission file - no API key, ~30 s
@@ -470,22 +341,8 @@ the key comes from the environment. `run_live.sh` and `run_agent.sh` are develop
 scripts kept for provenance — `run_live.sh` in particular reflects an earlier configuration
 and is not the submitted run.
 
-## Verified reproduction of the official baseline
-
-Seeds 0–4, matching the published protocol:
-
-| | ours | published |
-|---|---|---|
-| valid primary | 0.6016 | 0.6016 |
-| test primary | 0.5946 | 0.5946 |
-| test std (5 seeds) | 0.0008 | 0.0008 |
-| test GAUC / nDCG@5 | 0.6610 / 0.5282 | 0.6610 / 0.5282 |
-
-Row order is also byte-identical to `data.load()` on all three splits — checked because
-submission alignment is positional and `(user_id, video_id)` is not unique (3.06% of test
-rows are repeated pairs).
-
 ## Rules compliance
+
 
 Judging is by code review of the pipeline and run logs, so each rule is listed with the
 code that enforces it and the test that pins it.
@@ -508,7 +365,59 @@ and A.4 notes Recall@50 is 0.999+ for every model including random scoring. §2.
 task is "pinned in the Starter Kit", and the shipped `evaluate.py` computes GAUC / nDCG@5.
 We follow the Starter Kit.
 
+## Notes on the numbers
+
+**How the run ended.** A convergence rule was declared before the run and recorded in
+[`run_submission.sh`](run_submission.sh), as FAQ 2.9.1 permits: ε = 0.002, **N = 5**,
+minimum-iteration floor **10**. Both stopping conditions became true at the same moment:
+after iteration 10 the stall counter stood at 10 (>= N=5) with the floor satisfied, **and**
+the self-imposed 150k token budget was spent. The loop checks the budget first, so the log
+records `STOPPED: token budget exhausted (164,789 >= 150,000)` — verbatim in
+[`runs/live_submission.log`](runs/live_submission.log). The run summary reports both
+separately (`stop_kind: token_budget`, `converged_predicate: true`) rather than collapsing
+them, because "converged" alone would misdescribe how the loop exited. The scored
+submission is the validation-best checkpoint at the point the run stopped, which is what
+FAQ 2.9.1(c) requires; the hard caps (50 iterations, 6 h) were never approached.
+
+### What "0 interventions" does and does not mean
+
+No human touched the run once it
+started: no code was edited, no candidate was hand-fixed, no result was overridden. But the
+run is *seeded* with [`PRIOR_PURE`](kairos/agent/prior.py) — a human-written lab notebook
+carrying the incumbent's validation score, a "WHAT WON" section naming the winning
+architecture, and a ruled-out list distilled from roughly thirty earlier experiments. The
+candidate accepted at iteration 1 implements the architecture that prior describes. So the
+honest statement is **zero interventions within the run, plus one human-authored prior**,
+and the prior is a substantial input. It carries a contamination rule (nothing in it may
+cite or derive from the test split) and its provenance is in the module docstring. Reported
+this way because a judge who finds `prior.py` after reading a bare "0 manual interventions"
+should find it unsurprising rather than misleading.
+
+**The submission is the agent's output by construction.** The hand-built ensemble in the
+table above is a *reference ceiling* we measured to know what the agent was competing
+against — it was never a candidate for the submission slot. That matters because it has
+HIGHER validation (0.6045) and LOWER test (0.5976) than the agent's candidate: if the
+submission had been chosen on validation across both, the hand-built one would have won and
+scored worse. It was excluded because it is not agent-produced, not because of its scores.
+It is committed as [`reference_handbuilt_ensemble.csv`](reference_handbuilt_ensemble.csv) —
+named so it cannot be mistaken for a submission — and scores 0.5976 under
+`experiments/verify_submission.py reference_handbuilt_ensemble.csv`.
+
+**Seed determinism.** The accepted candidate reports `valid_std: 0.0` from a single seed.
+That is not a violation of the >=3-seed rule used elsewhere in this repo: under
+`mode='scores'` the candidate performs rank fusion of already-computed signals, which
+involves no stochastic training, so repeated seeds are bit-identical by construction.
+Claims about *trained* models in this repo use >=3 seeds.
+
+Reproduce the submitted run: `export ANTHROPIC_API_KEY=... && ./run_submission.sh` ·
+re-score the shipped submission in ~30 s with no API key:
+`./.venv/bin/python experiments/verify_submission.py` ·
+full writeups in [`reports/`](reports/)
+
+---
+
 ## Limitations, honestly
+
 
 - **Absolute gains are modest, and the headroom is genuinely small.** The scored
   improvement comes mostly from ensembling and disciplined selection, not from a stronger
@@ -553,7 +462,68 @@ We follow the Starter Kit.
   scoring — an agent that commits to a falsifiable claim can be checked, and this is what
   being checked looks like when the answer is unflattering.
 
+## What is in here
+
+
+| path | what it is |
+|---|---|
+| `kairos/kernel/fastmetrics.py` | vectorised GAUC / nDCG@5, exact to 4.4e-16 vs the official `evaluate.py`, 12x faster |
+| `kairos/kernel/dataset.py` | cached columnar loader; test labels sealed behind an audited `Scorer` |
+| `kairos/kernel/causal.py` | streaming prefix aggregates **and** window-frozen aggregates |
+| `kairos/kernel/frozenfeat.py` | deployment-faithful feature matrix + per-fold window schedules |
+| `kairos/kernel/diagnostics.py` | per-slice headroom attribution and pairwise inversion attribution |
+| `kairos/kernel/candidates.py` | pipeline pool spanning the leaky↔honest axis |
+| `kairos/agent/auditor.py` | temporal-validity checks; BLOCK vetoes a candidate |
+| `kairos/agent/sandbox.py` | AST allowlist + subprocess isolation for LLM-authored code |
+| `kairos/agent/selection.py` | transfer / stability / shrinkage corrections to argmax |
+| `kairos/agent/ledger.py` | per-iteration run log; also the stall-budget accounting |
+| `kairos/agent/loop.py` | the controller |
+| `experiments/` | every experiment and every contract test |
+
+The official starter kit (`evaluate.py`, `data.py`, `baseline.py`, `submit.py`,
+`ablation_features.py`, `baseline_scores.json`) is committed **byte-for-byte unmodified**;
+`evaluate.py` is the sole authority on scoring. The organizers' original README is
+preserved verbatim as `STARTER_KIT_README.md` (renamed only so GitHub displays this file).
+
+## Deliverables
+
+
+Where each item the track asks for lives in this repo.
+
+| # | Deliverable | Where |
+|---|---|---|
+| 1 | Written project description (Devpost) | [`reports/DEVPOST.md`](reports/DEVPOST.md) — includes tools, APIs, libraries and datasets used |
+| 2 | Public repository with a README | this file; setup, reproduction steps, limitations and contributions below |
+| 3 | Per-iteration run log — hypothesis, code diff, metrics, error/recovery events | [`reports/ITERATION_LOG.md`](reports/ITERATION_LOG.md) (Pure) · [`reports/ITERATION_LOG_1K.md`](reports/ITERATION_LOG_1K.md) (1k bonus) · raw ledgers in [`runs/kairos_submission_repro/`](runs/kairos_submission_repro/) |
+| 3 | Manual-intervention summary | **0 within the run**, plus one human-authored prior — stated in full [above](#what-0-interventions-does-and-does-not-mean) and in [`reports/RESULTS.md`](reports/RESULTS.md) |
+| 4 | Final model output in the starter-kit schema | [`submission.csv`](submission.csv) — 170,588 rows, passes `python3 submit.py --check` |
+| 4 | Results table + absolute delta over the baseline | [`reports/RESULTS.md`](reports/RESULTS.md), generated by `experiments/results_table.py` |
+| 4 | Resource usage — tokens, wall-clock, iterations, GPU-hours | [`reports/RESULTS.md`](reports/RESULTS.md) — 164,789 tokens, 941 s, 10/50 iterations, 0 GPU-hours |
+| — | Bonus benchmark (KuaiRand-1k) | [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md) |
+
+Everything in Deliverables 3 and 4 is **generated from run artifacts**, not typed by hand:
+`experiments/export_run_log.py` renders the ledgers, `experiments/results_table.py` renders
+the results table, and `experiments/verify_submission.py` re-scores `submission.csv` with the
+organizers' own `evaluate.py` and exits non-zero if any reported metric has drifted.
+
+### The rest of `reports/`
+
+| file | what it is |
+|---|---|
+| [`FINDINGS.md`](reports/FINDINGS.md) | the full technical record — every experiment, including the ~30 that produced nothing |
+| [`DATA_DISCIPLINE.md`](reports/DATA_DISCIPLINE.md) | exactly which rows each model is fitted on, and the one ambiguous case |
+| [`BUILD_REVIEW.md`](reports/BUILD_REVIEW.md) | a self-review of the build, written mid-project |
+| [`UPDATE.md`](reports/UPDATE.md) | what changed after that review |
+| [`RESEARCH_PROPOSALS.md`](reports/RESEARCH_PROPOSALS.md) | twelve proposed research directions, scored against measurement — 1 of 12 paid off |
+
+The last three are **historical**: they describe the earlier 3-iteration campaign and carry
+a banner saying so. They are kept because the negative results and the retracted claims in
+them are part of the evidence, not despite it.
+
+---
+
 ## Contributions
+
 
 Solo entry. All code in `kairos/` and `experiments/` written for this submission; the
 files listed as the official starter kit are the organizers' and are unmodified.
