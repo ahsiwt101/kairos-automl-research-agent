@@ -1,152 +1,153 @@
 def build(ctx):
     import numpy as np
-    from collections import defaultdict
 
     n = ctx.data.n
     y = ctx.data.y_raw.astype(np.float64)
-    dur = ctx.video_attr('video_duration').astype(np.float64)
-    log_dur = np.log1p(np.clip(dur, 0, None))
     uid = ctx.data.user_id
+    vdur = ctx.video_attr('video_duration').astype(np.float64)
+    horizon = ctx.fold.horizon
+    date = ctx.data.date
+
+    # labeled mask: rows dated strictly before horizon are usable as history
+    labeled = (date <= horizon).astype(np.int64)
+
+    # duration deciles from overall distribution of valid durations
+    valid_dur = vdur[np.isfinite(vdur) & (vdur > 0)]
+    if valid_dur.size == 0:
+        edges = np.array([0, 1])
+    else:
+        qs = np.linspace(0, 1, 11)
+        edges = np.unique(np.quantile(valid_dur, qs))
+        if edges.size < 2:
+            edges = np.array([valid_dur.min(), valid_dur.max() + 1])
+    dur_dec = np.clip(np.searchsorted(edges, vdur, side='right') - 1, 0, len(edges) - 2)
+
+    # composite key user x dur_dec
+    key_ud = np.unique(np.stack([uid, dur_dec], axis=1), axis=0, return_inverse=True)[1]
+
+    n_labeled_ud, n_pos_ud = ctx.frozen_prefix(key_ud, date, ctx.data.y_raw, labeled,
+                                                ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+
+    # global rate per dur_dec (using same frozen prefix logic, key = dur_dec alone)
+    n_labeled_d, n_pos_d = ctx.frozen_prefix(dur_dec, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    rate_d = np.where(n_labeled_d > 0, n_pos_d / np.maximum(n_labeled_d, 1), 0.5)
+
+    # global rate per user
+    n_labeled_u, n_pos_u = ctx.frozen_prefix(uid, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    rate_u = np.where(n_labeled_u > 0, n_pos_u / np.maximum(n_labeled_u, 1), 0.5)
+
+    prior_ud = 0.5 * rate_u + 0.5 * rate_d
+    a = 20.0
+    rate_ud = (n_pos_ud + a * prior_ud) / (n_labeled_ud + a)
+    delta_ud = rate_ud - rate_u
+    log_n_imp_ud = np.log1p(n_labeled_ud.astype(np.float64))
+
+    # popularity decile: use video popularity proxy via log-count of item labeled history
     vid = ctx.data.video_id
-    time_ms = ctx.data.time_ms
+    n_labeled_v, n_pos_v = ctx.frozen_prefix(vid, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    pop_score = np.log1p(n_labeled_v.astype(np.float64))
+    valid_pop = pop_score[np.isfinite(pop_score)]
+    if valid_pop.size == 0:
+        pedges = np.array([0, 1])
+    else:
+        qs = np.linspace(0, 1, 11)
+        pedges = np.unique(np.quantile(valid_pop, qs))
+        if pedges.size < 2:
+            pedges = np.array([valid_pop.min(), valid_pop.max() + 1])
+    pop_dec = np.clip(np.searchsorted(pedges, pop_score, side='right') - 1, 0, len(pedges) - 2)
 
-    order = np.argsort(time_ms, kind='mergesort')
+    key_up = np.unique(np.stack([uid, pop_dec], axis=1), axis=0, return_inverse=True)[1]
+    n_labeled_up, n_pos_up = ctx.frozen_prefix(key_up, date, ctx.data.y_raw, labeled,
+                                                ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    n_labeled_p, n_pos_p = ctx.frozen_prefix(pop_dec, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    rate_p = np.where(n_labeled_p > 0, n_pos_p / np.maximum(n_labeled_p, 1), 0.5)
+    prior_up = 0.5 * rate_u + 0.5 * rate_p
+    rate_up = (n_pos_up + a * prior_up) / (n_labeled_up + a)
+    delta_up = rate_up - rate_u
+    log_n_imp_up = np.log1p(n_labeled_up.astype(np.float64))
 
-    dec_edges = np.quantile(log_dur, np.linspace(0, 1, 11))
-    dur_dec = np.clip(np.searchsorted(dec_edges, log_dur, side='right') - 1, 0, 9)
+    # preferred log-duration per user, from positive (long_view) history using frozen prefix trick
+    logdur = np.log1p(np.clip(vdur, 0, None))
+    # weighted sums via frozen_prefix won't directly give means; approximate with causal_prefix style using cumulative sums per user
+    # build using simple grouping with np on labeled history (train-only leak-safe approx using horizon)
+    horizon_row = ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS)
+    order = np.argsort(uid, kind='stable')
+    sorted_uid = uid[order]
+    sorted_logdur = logdur[order]
+    sorted_y = ctx.data.y_raw[order].astype(np.float64)
+    sorted_date = date[order]
+    sorted_horizon = horizon_row[order]
 
-    vid_count = defaultdict(int)
-    counts_so_far = np.zeros(n, dtype=np.float64)
-    for idx in order:
-        v = vid[idx]
-        counts_so_far[idx] = vid_count[v]
-        vid_count[v] += 1
-    log_pop = np.log1p(counts_so_far)
-    pop_edges = np.quantile(log_pop, np.linspace(0, 1, 11))
-    pop_dec = np.clip(np.searchsorted(pop_edges, log_pop, side='right') - 1, 0, 9)
+    pref_sum = np.zeros(n)
+    pref_cnt = np.zeros(n)
 
-    user_pos = defaultdict(float)
-    user_cnt = defaultdict(float)
-    user_logdur_pos_sum = defaultdict(float)
-    user_pos_cnt = defaultdict(float)
+    uniq_u, start_idx = np.unique(sorted_uid, return_index=True)
+    start_idx = list(start_idx) + [n]
+    for i in range(len(uniq_u)):
+        s, e = start_idx[i], start_idx[i + 1]
+        seg_date = sorted_date[s:e]
+        seg_hor = sorted_horizon[s:e]
+        seg_y = sorted_y[s:e]
+        seg_ld = sorted_logdur[s:e]
+        # for each row, use rows dated <= its horizon and y==1 as history
+        csum = np.cumsum(seg_ld * seg_y)
+        ccnt = np.cumsum(seg_y)
+        idx_pos = np.searchsorted(seg_date, seg_hor, side='right') - 1
+        idx_pos = np.clip(idx_pos, -1, len(seg_date) - 1)
+        valid_mask = idx_pos >= 0
+        seg_pref_sum = np.zeros(e - s)
+        seg_pref_cnt = np.zeros(e - s)
+        seg_pref_sum[valid_mask] = csum[idx_pos[valid_mask]]
+        seg_pref_cnt[valid_mask] = ccnt[idx_pos[valid_mask]]
+        pref_sum[s:e] = seg_pref_sum
+        pref_cnt[s:e] = seg_pref_cnt
 
-    user_global_rate = np.zeros(n)
-    dur_gap = np.zeros(n)
-    abs_dur_gap = np.zeros(n)
+    inv_order = np.empty(n, dtype=np.int64)
+    inv_order[order] = np.arange(n)
+    pref_sum = pref_sum[inv_order]
+    pref_cnt = pref_cnt[inv_order]
 
-    ud_pos = defaultdict(float)
-    ud_cnt = defaultdict(float)
-    rate_ud = np.zeros(n)
-    log_n_ud = np.zeros(n)
-    delta_ud = np.zeros(n)
+    global_pref = np.nanmean(logdur[np.isfinite(logdur)]) if np.isfinite(logdur).any() else 0.0
+    pref_logdur = np.where(pref_cnt > 0, pref_sum / np.maximum(pref_cnt, 1), global_pref)
 
-    dd_pos = defaultdict(float)
-    dd_cnt = defaultdict(float)
+    dur_gap = logdur - pref_logdur
+    abs_dur_gap = np.abs(dur_gap)
 
-    up_pos = defaultdict(float)
-    up_cnt = defaultdict(float)
-    rate_up = np.zeros(n)
-    log_n_up = np.zeros(n)
-    delta_up = np.zeros(n)
+    baseline = ctx.baseline_score.astype(np.float64)
+    refit = ctx.refit_score().astype(np.float64)
+    din = ctx.din_score().astype(np.float64)
+    exp_ctx = ctx.expert_score('context').astype(np.float64)
+    exp_item = ctx.expert_score('item').astype(np.float64)
+    exp_user = ctx.expert_score('user').astype(np.float64)
 
-    pd_pos = defaultdict(float)
-    pd_cnt = defaultdict(float)
+    U, V = ctx.mf_factors(dim=16)
+    cf_dot = np.sum(U * V, axis=1).astype(np.float64)
 
-    global_pos = 0.0
-    global_cnt = 0.0
-
-    alpha = 20.0
-    default_pref = float(np.mean(log_dur))
-
-    for idx in order:
-        u = int(uid[idx])
-        dd = int(dur_dec[idx])
-        pd = int(pop_dec[idx])
-
-        gcnt = user_cnt[u]
-        gpos = user_pos[u]
-        if gcnt > 0:
-            urate = gpos / gcnt
-        elif global_cnt > 0:
-            urate = global_pos / global_cnt
-        else:
-            urate = 0.5
-        user_global_rate[idx] = urate
-
-        pcnt = user_pos_cnt[u]
-        if pcnt > 0:
-            pref = user_logdur_pos_sum[u] / pcnt
-        else:
-            pref = default_pref
-        gap = log_dur[idx] - pref
-        dur_gap[idx] = gap
-        abs_dur_gap[idx] = abs(gap)
-
-        key_ud = (u, dd)
-        n_ud = ud_cnt[key_ud]
-        p_ud = ud_pos[key_ud]
-        dd_c = dd_cnt[dd]
-        dd_p = dd_pos[dd]
-        if dd_c > 0:
-            dd_rate = dd_p / dd_c
-        elif global_cnt > 0:
-            dd_rate = global_pos / global_cnt
-        else:
-            dd_rate = 0.5
-        prior_ud = 0.5 * urate + 0.5 * dd_rate
-        rate_ud[idx] = (p_ud + alpha * prior_ud) / (n_ud + alpha)
-        log_n_ud[idx] = np.log1p(n_ud)
-        delta_ud[idx] = rate_ud[idx] - urate
-
-        key_up = (u, pd)
-        n_up = up_cnt[key_up]
-        p_up = up_pos[key_up]
-        pd_c = pd_cnt[pd]
-        pd_p = pd_pos[pd]
-        if pd_c > 0:
-            pd_rate = pd_p / pd_c
-        elif global_cnt > 0:
-            pd_rate = global_pos / global_cnt
-        else:
-            pd_rate = 0.5
-        prior_up = 0.5 * urate + 0.5 * pd_rate
-        rate_up[idx] = (p_up + alpha * prior_up) / (n_up + alpha)
-        log_n_up[idx] = np.log1p(n_up)
-        delta_up[idx] = rate_up[idx] - urate
-
-        yy = y[idx]
-        user_cnt[u] += 1
-        user_pos[u] += yy
-        if yy > 0:
-            user_logdur_pos_sum[u] += log_dur[idx]
-            user_pos_cnt[u] += 1
-        ud_cnt[key_ud] += 1
-        ud_pos[key_ud] += yy
-        dd_cnt[dd] += 1
-        dd_pos[dd] += yy
-        up_cnt[key_up] += 1
-        up_pos[key_up] += yy
-        pd_cnt[pd] += 1
-        pd_pos[pd] += yy
-        global_cnt += 1
-        global_pos += yy
-
-    baseline = ctx.baseline_score
-    refit = ctx.refit_score()
-    din = ctx.din_score()
-    cf_score, cf_hist = ctx.cf_score()
-
-    feats = [baseline, refit, din, cf_score, cf_hist,
-              user_global_rate, dur_gap, abs_dur_gap,
-              rate_ud, log_n_ud, delta_ud,
-              rate_up, log_n_up, delta_up,
-              log_dur, log_pop]
-    names = ['baseline_score', 'refit_score', 'din_score', 'cf_score', 'cf_hist',
-              'user_global_rate', 'dur_gap', 'abs_dur_gap',
-              'rate_user_durdec', 'log_n_user_durdec', 'delta_user_durdec',
-              'rate_user_popdec', 'log_n_user_popdec', 'delta_user_popdec',
-              'log_duration', 'log_pop']
+    feats = [
+        baseline, refit, din, exp_ctx, exp_item, exp_user, cf_dot,
+        rate_ud, delta_ud, log_n_imp_ud,
+        rate_up, delta_up, log_n_imp_up,
+        dur_gap, abs_dur_gap,
+        rate_u, rate_d, rate_p,
+        logdur, pref_logdur,
+    ]
+    names = [
+        'baseline_score', 'refit_score', 'din_score', 'expert_context', 'expert_item',
+        'expert_user', 'cf_dot',
+        'rate_user_durdecile', 'delta_user_durdecile', 'log_n_imp_user_durdecile',
+        'rate_user_popdecile', 'delta_user_popdecile', 'log_n_imp_user_popdecile',
+        'dur_gap', 'abs_dur_gap',
+        'rate_user_global', 'rate_durdecile_global', 'rate_popdecile_global',
+        'logdur', 'pref_logdur',
+    ]
 
     X = np.stack(feats, axis=1).astype(np.float32)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
     ctx.check(X, names)
-    return X, names
+    train_cfg = {'objective': 'binary', 'group': 'user_day'}
+    return X, names, train_cfg

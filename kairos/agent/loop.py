@@ -346,12 +346,16 @@ class Kairos:
 
     def run(self, verbose=True):
         n = 0
+        self._exit = ('unknown', 'loop exited without a recorded reason')
         while True:
             spent = self.proposer.tokens_in + self.proposer.tokens_out
             if spent >= self.max_tokens_total:
                 if verbose:
                     print(f"\nSTOPPED: token budget exhausted ({spent:,} >= "
                           f"{self.max_tokens_total:,})")
+                self._exit = ('token_budget',
+                              f'token budget exhausted ({spent:,} >= '
+                              f'{self.max_tokens_total:,})')
                 break
             done, why = self.ledger.converged(self.eps, self.stall_limit,
                                               self.max_iters, self.max_seconds)
@@ -362,6 +366,7 @@ class Kairos:
                 done, why = False, None
             if done:
                 if verbose: print(f"\nCONVERGED: {why}")
+                self._exit = ('converged', why)
                 break
             n += 1
             t0 = time.time()
@@ -484,4 +489,14 @@ class Kairos:
                       f"valid {ev['valid_primary']:.4f}+-{ev['valid_std']:.4f} "
                       f"({delta:+.4f})  stall={self.ledger.stall_counter(self.eps)}  "
                       f"{hyp.statement[:48]}")
-        return self.ledger.summary()
+        # Report the branch the loop ACTUALLY exited on. ledger.summary() re-evaluates the
+        # convergence predicate at the end, which can report converged=True even when the
+        # loop broke on the token budget - both were true of the submitted campaign, and
+        # "converged" alone would have been the wrong word for it.
+        out = self.ledger.summary()
+        kind, why = getattr(self, '_exit', ('unknown', 'loop exited without a recorded reason'))
+        out['stop_kind'] = kind
+        out['stop_reason'] = why
+        out['converged_predicate'] = out.get('converged')
+        out['converged'] = (kind == 'converged')
+        return out

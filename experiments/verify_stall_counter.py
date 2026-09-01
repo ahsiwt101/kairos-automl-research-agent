@@ -66,3 +66,19 @@ assert "'stalled' in (why or '')" in _src, \
     'the floor must apply only to the stall rule, not to iteration/wall-clock caps'
 assert 'min_iters' in str(_i.signature(_K.__init__)), 'min_iters must be declarable'
 print("  [PASS] declared floor suppresses convergence only, never the hard caps")
+
+# --------------------------------------------------------------------------------------
+# The run summary must report the branch the loop ACTUALLY exited on.
+# ledger.summary() re-evaluates the convergence predicate at the end, so it can report
+# converged=True even when the loop broke on the token budget. Both were true of the
+# submitted campaign - stall was 10 (>= N=5) at the same moment the budget ran out - and
+# reporting only "converged" would misdescribe how the run ended.
+_rsrc = _i.getsource(_K.run)
+assert "self._exit = ('token_budget'" in _rsrc, 'a token-budget stop must be recorded'
+assert "self._exit = ('converged'" in _rsrc, 'a convergence stop must be recorded'
+assert "out['stop_kind']" in _rsrc, 'the summary must expose the actual exit branch'
+assert "out['converged'] = (kind == 'converged')" in _rsrc, \
+    'converged must reflect the exit branch, not the re-evaluated predicate'
+assert "out['converged_predicate']" in _rsrc, \
+    'the re-evaluated predicate should still be reported, under its own name'
+print("  [PASS] run summary distinguishes the exit branch from the convergence predicate")
