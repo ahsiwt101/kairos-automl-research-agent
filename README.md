@@ -12,6 +12,8 @@ Benchmark: KuaiRand-Pure, within-user ranking on `long_view`, primary = mean(GAU
 
 GAUC 0.6653 (+0.0043) · nDCG@5 0.5313 (+0.0031) · `score_dataset` **+0.0037**
 
+**Bonus benchmark — KuaiRand-1k: primary 0.5856 → 0.6536, `score_dataset` +0.0680**, from the same agent with one environment variable changed ([details](#bonus-benchmark-kuairand-1k--00680)).
+
 **10 iterations · 2 accepts · 0 manual interventions within the run · 941 s ·
 164,789 tokens (≈$1.37) · 0 GPU-hours.** Both accepted candidates were independently
 backtest-confirmed. Full trajectory in
@@ -164,22 +166,43 @@ unsafe):
 - **Monotone post-processing** — provably a no-op: GAUC and nDCG depend only on within-user
   order, which a monotone map cannot change
 
-### Bonus benchmark: KuaiRand-1k
+### Bonus benchmark: KuaiRand-1k — +0.0680
 
-The same agent, same code, `KAIROS_VARIANT=1k` — 11.7M rows, 4.37M items, and **117× more
-history per user** (5,143 rows/user vs Pure's 44).
+The same agent, the same code, only `KAIROS_VARIANT=1k` changed. 11.7M rows, 4.37M items,
+and **117× more history per user** (5,143 rows/user vs Pure's 44). Its prior was
+deliberately stripped of every empirical conclusion measured on Pure, so this tests whether
+the *agent* generalises rather than whether Pure's answers do.
 
-| | Pure | 1k |
-|---|---|---|
-| FM baseline (valid / test) | 0.6016 / 0.5946 | 0.5778 / 0.5856 |
-| agent best (validation) | 0.6030 | **0.6522 (+0.0744)** |
-| backtest-confirmed | yes | yes — gap −0.0026 vs 0.035 threshold |
+| metric | 1k FM baseline | KAIROS | delta |
+|---|---|---|---|
+| GAUC | 0.6428 | 0.6841 | **+0.0413** |
+| nDCG@5 | 0.5285 | 0.6232 | **+0.0947** |
+| **primary** | **0.5856** | **0.6536** | **+0.0680** |
 
-The 20× larger gain supports the structural prediction: personalisation is worth ~0.006 on
-Pure because 44 rows per user is too few to estimate a user's preferences, and 1k removes
-exactly that constraint. **Caveat:** the leak detector's absolute-ceiling threshold is
-calibrated on Pure and cleared by only 0.0060 here, so the *gap* check is what carries that
-verdict. Details in [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md).
+**6 iterations · 1 accept · 0 manual interventions · 147,256 tokens.** Eighteen times the
+Pure delta — and checked three ways, because a gain that size should attract suspicion:
+
+1. Backtest confirmation on `backtest_a`: valid 0.6414 / test 0.6440, **gap −0.0026**
+   against a 0.035 threshold. A leak inflates validation *relative to* test; this is
+   negative.
+2. On the official fold, validation 0.6522 and test **0.6536** — test is *higher*.
+   Within-window label feedback cannot produce that.
+3. The mechanism predicts it: personalisation is worth ~0.006 on Pure because 44 rows per
+   user is too few to estimate a preference. 1k removes exactly that constraint.
+
+**But the clean story is wrong in an interesting way.** Iterations 3, 4 and 6 all proposed
+*personalisation* features — user × duration-decile affinity, duration-preference,
+popularity-preference — and all three failed (−0.0356 on the one that ran). Even with 117×
+more history per user, hand-specified personalisation features did not pay. The gain came
+from the **fusion architecture**, which the agent rediscovered without being told, since its
+prior contained no Pure results.
+
+**Caveat:** the leak detector's absolute-ceiling threshold is calibrated on Pure and was
+cleared here by only 0.0060, so the *gap* check is what carries that verdict. The gap check
+transfers between datasets; the ceiling check does not.
+
+Full trajectory in [`reports/ITERATION_LOG_1K.md`](reports/ITERATION_LOG_1K.md), numbers and
+leak analysis in [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md).
 
 Porting to 1k also found **five latent defects in our own code** — positional side-table
 indexing, an inert `RLIMIT_AS` guard, cross-variant cache collisions, an unguarded

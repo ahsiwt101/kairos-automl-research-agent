@@ -1,91 +1,67 @@
 # Results — KuaiRand-1k (bonus benchmark)
 
-> **Status: run in flight.** This document describes a campaign that is still executing at
-> the time of writing (`runs/kairos_1k/`, started 2026-09-01). Iterations completed so far
-> are reported below with their real numbers; the final row is deliberately empty rather
-> than estimated. Nothing here is scored on the 1k hidden test yet.
+A **transfer probe**: the same agent, the same code, the same declared convergence rule,
+with only `KAIROS_VARIANT=1k` changed. No retuning, and a prior
+(`PRIOR_1K` in `kairos/agent/prior.py`) deliberately stripped of every empirical conclusion
+measured on Pure — it carries only mechanism, a theorem about the metric, the leakage rule,
+and which primitives are wired. Feeding Pure's conclusions in would have answered "do Pure's
+findings hold?" while looking like "does the agent generalise?".
 
-KuaiRand-1k is a **bonus** benchmark. Per §2.6, skipping it does not reduce the
-KuaiRand-Pure score, and KuaiRand-Pure alone determines 100% of the Primary metric.
+## Result
 
-## What this run is testing
+| metric | official FM baseline | KAIROS | absolute delta |
+|---|---|---|---|
+| GAUC | 0.6428 | 0.6841 | **+0.0413** |
+| nDCG@5 | 0.5285 | 0.6232 | **+0.0947** |
+| **primary** | **0.5856** | **0.6536** | **+0.0680** |
 
-The same agent, prompt-for-prompt and code-for-code, pointed at a dataset it was never
-tuned on. Only `KAIROS_VARIANT` changes. 1k is 8× the rows of Pure, 577× the item space,
-and 117× the per-user history — so this is a transfer probe on the *agent*, not a fresh
-tuning exercise.
+Validation 0.5778 → **0.6522** (+0.0744). Accepted at iteration 2, backtest-confirmed.
 
-Per FAQ 2.9.2, 1k is trained on its own splits only. It is never used as auxiliary training
-data for Pure, and Pure is never used for it. This is enforced structurally rather than by
-convention: every signal cache is keyed by dataset variant, and a cached array of the wrong
-length is refused outright (`experiments/verify_variant_isolation.py`).
+**6 iterations · 1 accept · 0 manual interventions · 18,905 s · 147,256 tokens.**
+Stopped on its 120k token budget, before the declared 10-iteration floor.
 
-## Official FM baseline on 1k, reproduced
+## Why this is not a leak
 
-Reproduced with the same pipeline, on 1k's own splits:
+A +0.0680 gain is exactly the shape that should trigger suspicion, so it was checked three
+ways rather than assumed:
 
-| split | GAUC | nDCG@5 | primary | users |
-|---|---|---|---|---|
-| valid | 0.6406 | 0.5151 | 0.5778 | 978 |
-| test | 0.6428 | 0.5285 | 0.5856 | 997 |
+1. **Backtest confirmation** — re-running the candidate's own code on `backtest_a`:
+   valid 0.6414 / test 0.6440, **gap −0.0026** against a 0.035 threshold. A leak inflates
+   validation relative to test; this gap is *negative*.
+2. **The official fold agrees** — validation 0.6522, test **0.6536**. Test is *higher* than
+   validation. Within-window label feedback cannot produce that.
+3. **The mechanism predicts it.** Our Pure decomposition found personalisation worth only
+   ~0.006 because 44 rows per user is too few to estimate a user's preferences. 1k carries
+   **5,143 rows per user** — 117× more history. The constraint the Pure finding blamed is
+   the one 1k removes.
 
-The agent's `baseline_valid` is set to 1k's own 0.5778, not Pure's — carrying Pure's number
-across would make every 1k candidate look like a regression against a figure from a
-different dataset.
+**Caveat, stated because it nearly mattered.** The absolute-ceiling half of the leak
+detector is calibrated on *Pure's* backtest folds (`HONEST_CEILING = 0.60` for
+`backtest_a`). On 1k it was cleared by only **0.0060**. That threshold has no 1k calibration
+behind it, so the *gap* check is what carries the verdict here. The detector's gap check
+transfers; its ceiling check does not.
 
-## Run configuration
+## What the agent found, and what it did not
 
-Declared before the run, in `run_1k.sh`:
+The accepted move was architectural: abandon the single downstream tree and fuse
+decorrelated model outputs at rank level — the same family that won on Pure, rediscovered
+without being told, since `PRIOR_1K` contains no Pure results.
 
-- Convergence rule (FAQ 2.9.1): ε = 0.002, N = 5, minimum-iteration floor = 10
-- Hard caps: 50 iterations, 6 h wall-clock
-- Token budget: 120,000
-- **Seeds: 1, not 3.** Every candidate is re-run in full for backtest confirmation, so seed
-  count multiplies the *cost of verification* on 11.7M rows. Seed averaging was measured to
-  saturate by 3 seeds on Pure and is worth ~0.001; being able to *check* a large claim is
-  worth more. This is a deliberate trade and it is why the 1k numbers below carry
-  `±0.0000` — that is a single seed, not a stability claim.
+What did **not** work is as informative. Iterations 3, 4 and 6 all proposed *personalisation*
+features — user × duration-decile affinity, user duration-preference, popularity-preference
+— and all three failed (the one that ran scored −0.0356). So even on a dataset with 117×
+more history per user, hand-specified personalisation features did not pay; the gain came
+from the fusion architecture instead.
 
-## Iterations so far
+That is a more interesting result than a clean "personalisation works when you have data",
+and it is the honest reading of this trajectory.
 
-| # | decision | valid primary | GAUC | nDCG@5 | Δ vs 1k baseline | wall-clock |
-|---|---|---|---|---|---|---|
-| 1 | rollback | — (no score) | — | — | — | 126.7 s |
-| 2 | **accept** | **0.6522** | 0.6810 | 0.6235 | **+0.0744** | 727.8 s |
-| … | *run in progress* | | | | | |
+## What the port itself found
 
-Iteration 1 rolled back rather than crashed: the candidate was produced and rejected before
-its score was believed, which counts toward the 50-iteration cap but does not advance or
-reset the convergence window (FAQ 2.9.1).
+Before producing any score, porting to 1k exposed **five latent defects in our own code**,
+every one invisible on Pure and silently wrong rather than loud: side tables indexed by
+position rather than id; an inert `RLIMIT_AS` memory guard whose error we swallowed;
+signal caches shared across variants; an unguarded evaluation subprocess; and a prewarm
+deadlock from loading torch and LightGBM into one process. See `FINDINGS.md` §13.
 
-## What is not yet claimed
-
-- **No hidden-test score.** The 1k test split has not been consulted for this run.
-- **The +0.0744 is a single-seed validation figure**, backtest-confirmed but not
-  seed-averaged. It is far larger than any gain seen on Pure, which on this project's own
-  argument is a reason for suspicion rather than celebration until it is confirmed on the
-  test split.
-- **No submission file for 1k has been generated.**
-
-## Why an earlier 1k attempt failed, and what fixed it
-
-A previous 1k campaign rejected every large-gain candidate. The rejections were misread at
-the time as the verifier being intrinsically too expensive on 11.7M rows. The actual cause
-was narrower: prewarming did not cover the *confirmation* fold, so every backtest
-confirmation rebuilt two windowed FMs over 11.7M rows inside the candidate sandbox and blew
-its timeout. Prewarm now covers the confirmation fold, and confirmations complete.
-
-The port itself found five latent defects in our own code — documented in
-`reports/FINDINGS.md`. That is the more durable result from the 1k work so far: running the
-same agent on a second dataset surfaced bugs that a single-dataset run never would have.
-
-## Updating this document
-
-When the run stops, regenerate the per-iteration log and this table from the ledger:
-
-```bash
-./.venv/bin/python experiments/export_run_log.py runs/kairos_1k reports/ITERATION_LOG_1K.md
-```
-
-The stop reason is read from `runs/live_1k.log`; report it verbatim, as the Pure campaign
-does, rather than assuming the convergence rule fired.
+A second dataset is an assumption detector, independent of what it scores.

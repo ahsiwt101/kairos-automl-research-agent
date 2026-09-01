@@ -1,15 +1,15 @@
-# KAIROS run log — KuaiRand-1k (bonus benchmark, transfer probe)
+# KAIROS run log — KuaiRand-1k (bonus benchmark)
 
-Bonus benchmark. The same agent, unchanged, pointed at KuaiRand-1k — trained on 1k's
-own splits only, per FAQ 2.9.2. Single-seed by design; see `reports/RESULTS_1K.md`
-for why, and for the current status of this run.
+Transfer probe: the SAME agent and code as the Pure campaign, with only
+`KAIROS_VARIANT=1k` changed. Declared rule (FAQ 2.9.1): eps=0.002, N=5, floor=10.
+The run stopped on its 120k token budget after 6 iterations, before the floor.
 
 ## Summary
 
-- **Iterations:** 2 (cap 50)
+- **Iterations:** 6 (cap 50)
 - **Manual interventions:** 0
-- **Wall-clock:** 727.8 s
-- **Tokens (in / out):** 27,468 / 18,039
+- **Wall-clock:** 18905.0 s
+- **Tokens (in / out):** 70,667 / 46,082
 - **GPU-hours:** 0 (CPU only)
 
 ## Iteration 1 — ROLLBACK
@@ -444,6 +444,663 @@ def build(ctx):
     ctx.check(X, names)
     train_cfg = {'mode': 'scores'}
     return X, names, train_cfg
+```
+
+</details>
+
+---
+
+## Iteration 3 — ROLLBACK
+
+**Family:** `history`  
+**Hypothesis:** Add per-user eatures: a smoothed user	times duration-decile long_view rate (empirical-Bayes target encoding) plus the signed/absolute gap between an item's log-duration and the user's history-derived preferred log-duration, on top of the existing history matrix (keeping ctx.baseline_score and adding ctx.cf_score as a decorrelated member).
+
+**Mechanism (why it should work):** The diagnostics say the single largest structured error is the duration-decile inversion (total GAUC loss 0.319, worst in deciles 1, 7, 8 - i.e. both very short and long items are mis-ordered). A global duration effect cannot be the cause of within-user inversions unless duration preference is heterogeneous across users: some users long-view short clips, others long-view long ones, and a model with only a global duration response must invert one group to fit the other. Personalising the duration response - user	times duration-bucket historical long_view rate, and distance of the candidate's duration from the user's historically preferred duration - makes the duration term vary WITHIN a user's list in a user-specific direction, which is exactly the degree of freedom needed to remove those inversions. This is the same history family that already produced +0.074, now aimed at the specific residual the inversion table exposes rather than at generic history counts.
+
+**Falsifiable prediction:** `{"diagnostic": "inversion_loss_duration", "direction": "decrease"}` → **unverifiable**
+
+**Metrics:** none — iteration produced no validation score.
+
+**Decision rationale:** abandoned after 2 repair attempts: candidate exceeded the 3000s budget
+
+**Error / recovery — `timeout`**  
+candidate exceeded the 3000s budget  
+*Recovery:* fed the error back to the proposer (repair attempt 1/2)
+
+**Error / recovery — `runtime`**  
+                              cache_dir=variant_path(f'runs/cf_cache_{self.fold_name}'),
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              fit_end=train_end(self.fold_name))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/kernel/cf_signal.py", line 59, in build_cf_score
+    C = (M.T @ Mw).toarray()
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/.venv/lib/python3.14/site-packages/scipy/sparse/_compressed.py", line 1014, in toarray
+    out = self._process_toarray_args(order, out)
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/.venv/lib/python3.14/site-packages/scipy/sparse/_base.py", line 1693, in _process_toarray_args
+    return   
+*Recovery:* fed the error back to the proposer (repair attempt 2/2)
+
+**Error / recovery — `timeout`**  
+candidate exceeded the 3000s budget  
+*Recovery:* fed the error back to the proposer (repair attempt 3/2)
+
+<details><summary>Code applied this iteration</summary>
+
+```python
+def build(ctx):
+    import numpy as np
+
+    n = ctx.data.n
+    y = ctx.data.y_raw.astype(np.float64)
+    uid = ctx.data.user_id
+    vdur = ctx.video_attr('video_duration').astype(np.float64)
+    horizon = ctx.fold.horizon
+    date = ctx.data.date
+
+    # labeled mask: rows dated strictly before horizon are usable as history
+    labeled = (date <= horizon).astype(np.int64)
+
+    # duration deciles from overall distribution of valid durations
+    valid_dur = vdur[np.isfinite(vdur) & (vdur > 0)]
+    if valid_dur.size == 0:
+        edges = np.array([0, 1])
+    else:
+        qs = np.linspace(0, 1, 11)
+        edges = np.unique(np.quantile(valid_dur, qs))
+        if edges.size < 2:
+            edges = np.array([valid_dur.min(), valid_dur.max() + 1])
+    dur_dec = np.clip(np.searchsorted(edges, vdur, side='right') - 1, 0, len(edges) - 2)
+
+    # composite key user x dur_dec
+    key_ud = np.unique(np.stack([uid, dur_dec], axis=1), axis=0, return_inverse=True)[1]
+
+    n_labeled_ud, n_pos_ud = ctx.frozen_prefix(key_ud, date, ctx.data.y_raw, labeled,
+                                                ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+
+    # global rate per dur_dec (using same frozen prefix logic, key = dur_dec alone)
+    n_labeled_d, n_pos_d = ctx.frozen_prefix(dur_dec, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    rate_d = np.where(n_labeled_d > 0, n_pos_d / np.maximum(n_labeled_d, 1), 0.5)
+
+    # global rate per user
+    n_labeled_u, n_pos_u = ctx.frozen_prefix(uid, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    rate_u = np.where(n_labeled_u > 0, n_pos_u / np.maximum(n_labeled_u, 1), 0.5)
+
+    prior_ud = 0.5 * rate_u + 0.5 * rate_d
+    a = 20.0
+    rate_ud = (n_pos_ud + a * prior_ud) / (n_labeled_ud + a)
+    delta_ud = rate_ud - rate_u
+    log_n_imp_ud = np.log1p(n_labeled_ud.astype(np.float64))
+
+    # popularity decile: use video popularity proxy via log-count of item labeled history
+    vid = ctx.data.video_id
+    n_labeled_v, n_pos_v = ctx.frozen_prefix(vid, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    pop_score = np.log1p(n_labeled_v.astype(np.float64))
+    valid_pop = pop_score[np.isfinite(pop_score)]
+    if valid_pop.size == 0:
+        pedges = np.array([0, 1])
+    else:
+        qs = np.linspace(0, 1, 11)
+        pedges = np.unique(np.quantile(valid_pop, qs))
+        if pedges.size < 2:
+            pedges = np.array([valid_pop.min(), valid_pop.max() + 1])
+    pop_dec = np.clip(np.searchsorted(pedges, pop_score, side='right') - 1, 0, len(pedges) - 2)
+
+    key_up = np.unique(np.stack([uid, pop_dec], axis=1), axis=0, return_inverse=True)[1]
+    n_labeled_up, n_pos_up = ctx.frozen_prefix(key_up, date, ctx.data.y_raw, labeled,
+                                                ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    n_labeled_p, n_pos_p = ctx.frozen_prefix(pop_dec, date, ctx.data.y_raw, labeled,
+                                              ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS))
+    rate_p = np.where(n_labeled_p > 0, n_pos_p / np.maximum(n_labeled_p, 1), 0.5)
+    prior_up = 0.5 * rate_u + 0.5 * rate_p
+    rate_up = (n_pos_up + a * prior_up) / (n_labeled_up + a)
+    delta_up = rate_up - rate_u
+    log_n_imp_up = np.log1p(n_labeled_up.astype(np.float64))
+
+    # preferred log-duration per user, from positive (long_view) history using frozen prefix trick
+    logdur = np.log1p(np.clip(vdur, 0, None))
+    # weighted sums via frozen_prefix won't directly give means; approximate with causal_prefix style using cumulative sums per user
+    # build using simple grouping with np on labeled history (train-only leak-safe approx using horizon)
+    horizon_row = ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS)
+    order = np.argsort(uid, kind='stable')
+    sorted_uid = uid[order]
+    sorted_logdur = logdur[order]
+    sorted_y = ctx.data.y_raw[order].astype(np.float64)
+    sorted_date = date[order]
+    sorted_horizon = horizon_row[order]
+
+    pref_sum = np.zeros(n)
+    pref_cnt = np.zeros(n)
+
+    uniq_u, start_idx = np.unique(sorted_uid, return_index=True)
+    start_idx = list(start_idx) + [n]
+    for i in range(len(uniq_u)):
+        s, e = start_idx[i], start_idx[i + 1]
+        seg_date = sorted_date[s:e]
+        seg_hor = sorted_horizon[s:e]
+        seg_y = sorted_y[s:e]
+        seg_ld = sorted_logdur[s:e]
+        # for each row, use rows dated <= its horizon and y==1 as history
+        csum = np.cumsum(seg_ld * seg_y)
+        ccnt = np.cumsum(seg_y)
+        idx_pos = np.searchsorted(seg_date, seg_hor, side='right') - 1
+        idx_pos = np.clip(idx_pos, -1, len(seg_date) - 1)
+        valid_mask = idx_pos >= 0
+        seg_pref_sum = np.zeros(e - s)
+        seg_pref_cnt = np.zeros(e - s)
+        seg_pref_sum[valid_mask] = csum[idx_pos[valid_mask]]
+        seg_pref_cnt[valid_mask] = ccnt[idx_pos[valid_mask]]
+        pref_sum[s:e] = seg_pref_sum
+        pref_cnt[s:e] = seg_pref_cnt
+
+    inv_order = np.empty(n, dtype=np.int64)
+    inv_order[order] = np.arange(n)
+    pref_sum = pref_sum[inv_order]
+    pref_cnt = pref_cnt[inv_order]
+
+    global_pref = np.nanmean(logdur[np.isfinite(logdur)]) if np.isfinite(logdur).any() else 0.0
+    pref_logdur = np.where(pref_cnt > 0, pref_sum / np.maximum(pref_cnt, 1), global_pref)
+
+    dur_gap = logdur - pref_logdur
+    abs_dur_gap = np.abs(dur_gap)
+
+    baseline = ctx.baseline_score.astype(np.float64)
+    refit = ctx.refit_score().astype(np.float64)
+    din = ctx.din_score().astype(np.float64)
+    exp_ctx = ctx.expert_score('context').astype(np.float64)
+    exp_item = ctx.expert_score('item').astype(np.float64)
+    exp_user = ctx.expert_score('user').astype(np.float64)
+
+    U, V = ctx.mf_factors(dim=16)
+    cf_dot = np.sum(U * V, axis=1).astype(np.float64)
+
+    feats = [
+        baseline, refit, din, exp_ctx, exp_item, exp_user, cf_dot,
+        rate_ud, delta_ud, log_n_imp_ud,
+        rate_up, delta_up, log_n_imp_up,
+        dur_gap, abs_dur_gap,
+        rate_u, rate_d, rate_p,
+        logdur, pref_logdur,
+    ]
+    names = [
+        'baseline_score', 'refit_score', 'din_score', 'expert_context', 'expert_item',
+        'expert_user', 'cf_dot',
+        'rate_user_durdecile', 'delta_user_durdecile', 'log_n_imp_user_durdecile',
+        'rate_user_popdecile', 'delta_user_popdecile', 'log_n_imp_user_popdecile',
+        'dur_gap', 'abs_dur_gap',
+        'rate_user_global', 'rate_durdecile_global', 'rate_popdecile_global',
+        'logdur', 'pref_logdur',
+    ]
+
+    X = np.stack(feats, axis=1).astype(np.float32)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+    ctx.check(X, names)
+    train_cfg = {'objective': 'binary', 'group': 'user_day'}
+    return X, names, train_cfg
+```
+
+</details>
+
+---
+
+## Iteration 4 — REJECT
+
+**Family:** `history`  
+**Hypothesis:** Add user-conditional DURATION-AFFINITY features: hierarchically-smoothed per-(user, video-duration-decile) historical long_view rates plus signed distance between a candidate's duration and the user's recency-weighted long-viewed duration profile, on top of the existing matrix (ctx.baseline_score + current history features). This is a focused, diagnostics-driven swing (explore mode, 5 misses affordable), not a blend.
+
+**Mechanism (why it should work):** The `long_view` label is mechanically duration-dependent (it is a watch-time threshold relative to video length), and the duration-decile inversion table is the single largest structured loss in the diagnostics (0.319 total GAUC loss, worst deciles 1, 7, 8, 2 - i.e. both the very short and the long tail). A GLOBAL duration effect cannot help within-user ranking only if it were constant per list, but duration varies strongly across items in a user's impression list, so the model can already exploit raw duration; what it CANNOT exploit today is that the duration->long_view mapping is heterogeneous ACROSS USERS (some users habitually finish 60s clips, others only ever trigger long_view on 8s clips). A per-user duration response curve, estimated from that user's own training impressions with empirical-Bayes shrinkage toward the global duration-decile curve, supplies exactly the missing user x duration interaction and should re-order items within the short (decile 1-2) and long (decile 7-8) buckets that currently invert. Recency-weighting the aggregates addresses the 5x logging-density collapse: valid/test sit in the sparse regime, so the user's LATE behaviour is the right prior.
+
+**Falsifiable prediction:** `{"diagnostic": "inversion_loss_duration", "direction": "decrease"}` → **MISS**
+
+**Metrics (validation):**
+
+| GAUC | nDCG@5 | primary | Δ vs incumbent |
+|---|---|---|---|
+| 0.6611 | 0.5721 | **0.6166** | -0.0356 |
+
+**Decision rationale:** valid 0.6166 +-0.0000 vs incumbent 0.6522 (delta -0.0356)
+
+<details><summary>Code applied this iteration</summary>
+
+```python
+def build(ctx):
+    import numpy as np
+
+    n = ctx.data.n
+    date = ctx.data.date
+    y = ctx.data.y_raw.astype(np.float32)
+    user_id = ctx.data.user_id
+    video_duration = ctx.video_attr('video_duration').astype(np.float64)
+    video_duration = np.nan_to_num(video_duration, nan=0.0)
+    video_duration = np.clip(video_duration, 1.0, None)
+
+    # duration deciles based on global distribution
+    edges = np.quantile(video_duration, np.linspace(0, 1, 11))
+    edges[0] -= 1.0
+    edges[-1] += 1.0
+    decile = np.digitize(video_duration, edges[1:-1], right=True).astype(np.int64)
+
+    # composite key user x decile
+    stacked = np.stack([user_id.astype(np.int64), decile], axis=1)
+    _, key_ud = np.unique(stacked, axis=0, return_inverse=True)
+    key_d = decile
+    key_u = user_id.astype(np.int64)
+
+    labeled = np.ones(n, dtype=bool)
+    horizon = ctx.window_horizons(date, ctx.OFFICIAL_WINDOWS)
+
+    n_labeled_ud, n_pos_ud = ctx.frozen_prefix(key_ud, date, y, labeled, horizon)
+    n_labeled_d, n_pos_d = ctx.frozen_prefix(key_d, date, y, labeled, horizon)
+    n_labeled_u, n_pos_u = ctx.frozen_prefix(key_u, date, y, labeled, horizon)
+
+    global_mean = float(np.mean(y)) if n > 0 else 0.5
+
+    global_rate_d = ctx.smoothed_rate(n_pos_d, n_labeled_d, global_mean, 50.0)
+    featureA = ctx.smoothed_rate(n_pos_ud, n_labeled_ud, global_rate_d, 20.0)
+    user_rate = ctx.smoothed_rate(n_pos_u, n_labeled_u, global_mean, 20.0)
+    featureB = featureA - user_rate
+
+    conf_ud = np.log1p(n_labeled_ud.astype(np.float64))
+
+    log_duration = np.log1p(video_duration)
+
+    # list-relative duration percentile within user's rows (current window)
+    def group_rank_pct(keys, values):
+        order = np.argsort(keys, kind='stable')
+        sorted_keys = keys[order]
+        sorted_vals = values[order]
+        m = len(keys)
+        ranks = np.empty(m, dtype=np.float64)
+        start = 0
+        while start < m:
+            end = start
+            k = sorted_keys[start]
+            while end < m and sorted_keys[end] == k:
+                end += 1
+            group_vals = sorted_vals[start:end]
+            order2 = np.argsort(group_vals, kind='stable')
+            r = np.empty(len(group_vals), dtype=np.float64)
+            r[order2] = np.arange(len(group_vals))
+            denom = max(len(group_vals) - 1, 1)
+            pct = r / denom
+            ranks[start:end] = pct
+            start = end
+        out = np.empty(m, dtype=np.float64)
+        out[order] = ranks
+        return out
+
+    E = group_rank_pct(user_id.astype(np.int64), video_duration)
+
+    baseline = ctx.baseline_score.astype(np.float64)
+
+    X = np.stack([
+        baseline,
+        featureA.astype(np.float64),
+        featureB.astype(np.float64),
+        conf_ud,
+        decile.astype(np.float64),
+        log_duration,
+        E,
+    ], axis=1).astype(np.float32)
+
+    names = [
+        'baseline_score',
+        'user_decile_lv_rate_smoothed',
+        'user_decile_lv_rate_minus_user_rate',
+        'user_decile_conf_log1p',
+        'duration_decile',
+        'log_duration',
+        'duration_pct_within_user',
+    ]
+
+    ctx.check(X, names)
+    return X, names
+```
+
+</details>
+
+---
+
+## Iteration 5 — ROLLBACK
+
+**Family:** `ensemble`  
+**Hypothesis:** Replace the single-model matrix with an explicit multi-member fusion matrix: give LightGBM the baseline FM score plus four DECORRELATED members (ctx.refit_score, ctx.din_score, ctx.cf_score, an mf_factors user-item dot product, and ctx.auxiliary_signal), each as a per-user percentile rank, together with one precomputed plain-linear fused rank column, and average over 3 seeds.
+
+**Mechanism (why it should work):** The only measured lever on this benchmark is blending decorrelated models. The FM/DIN pair is +0.848 correlated (redundant), but cf (+0.455), mf (+0.381) and the auxiliary-feedback signal are weakly correlated with the FM, so their errors are close to independent and averaging their per-user ranks cancels member-specific noise. Crucially, the FM's ID-cross parameters are the part that is underfit for users with few logged impressions (slice auc_mean falls monotonically 0.7057 -> 0.6778 as train impressions shrink), because those users' ID embeddings see little gradient. cf_score (item-item behavioural similarity) and the mf_factors dot product are item-side / low-rank signals that do not need many observations of that specific user to be informative, so the fusion should lift exactly the low-train-impression buckets while leaving the well-fit high-activity users roughly unchanged. Per-user percentile ranking is used because within-user ranking is invariant to per-user constants, so rank normalisation removes each member's per-user scale/offset without destroying information. Plain linear weights only - measured evidence says per-member gamma powers fit validation noise and widen the valid/test gap.
+
+**Falsifiable prediction:** `{"diagnostic": "auc_low_activity_users", "direction": "increase"}` → **unverifiable**
+
+**Metrics:** none — iteration produced no validation score.
+
+**Decision rationale:** abandoned after 2 repair attempts: candidate exceeded the 3000s budget
+
+**Error / recovery — `timeout`**  
+candidate exceeded the 3000s budget  
+*Recovery:* fed the error back to the proposer (repair attempt 1/2)
+
+**Error / recovery — `timeout`**  
+candidate exceeded the 3000s budget  
+*Recovery:* fed the error back to the proposer (repair attempt 2/2)
+
+**Error / recovery — `timeout`**  
+candidate exceeded the 3000s budget  
+*Recovery:* fed the error back to the proposer (repair attempt 3/2)
+
+<details><summary>Code applied this iteration</summary>
+
+```python
+def build(ctx):
+    import numpy as np
+
+    n = ctx.data.n
+    user_id = ctx.data.user_id
+
+    def percentile_rank_by_group(group_ids, values):
+        order = np.lexsort((values, group_ids))
+        sorted_gid = group_ids[order]
+        m = len(values)
+        change = np.empty(m, dtype=bool)
+        change[0] = True
+        if m > 1:
+            change[1:] = sorted_gid[1:] != sorted_gid[:-1]
+        group_start = np.where(change)[0]
+        group_sizes = np.diff(np.append(group_start, m))
+        group_id_start = np.repeat(group_start, group_sizes)
+        pos_in_group = np.arange(m) - group_id_start
+        sizes_repeated = np.repeat(group_sizes, group_sizes)
+        pct = pos_in_group / np.maximum(sizes_repeated - 1, 1)
+        result = np.empty(m, dtype=np.float64)
+        result[order] = pct
+        return result.astype(np.float32)
+
+    baseline = np.asarray(ctx.baseline_score, dtype=np.float32)
+    refit = np.asarray(ctx.refit_score(), dtype=np.float32)
+    din = np.asarray(ctx.din_score(), dtype=np.float32)
+    cf_score, cf_hist = ctx.cf_score()
+    cf_score = np.asarray(cf_score, dtype=np.float32)
+    cf_hist = np.asarray(cf_hist, dtype=np.float32)
+    aux = np.asarray(ctx.auxiliary_signal('is_click'), dtype=np.float32)
+
+    U, V = ctx.mf_factors(dim=16)
+    mf_dot = np.sum(U * V, axis=1).astype(np.float32)
+
+    r_fm = percentile_rank_by_group(user_id, baseline)
+    r_refit = percentile_rank_by_group(user_id, refit)
+    r_din = percentile_rank_by_group(user_id, din)
+    r_cf = percentile_rank_by_group(user_id, cf_score)
+    r_mf = percentile_rank_by_group(user_id, mf_dot)
+    r_aux = percentile_rank_by_group(user_id, aux)
+
+    fused = (0.34 * r_fm + 0.20 * r_refit + 0.14 * r_din +
+             0.13 * r_cf + 0.11 * r_mf + 0.08 * r_aux).astype(np.float32)
+    fused_minus_fm = (fused - r_fm).astype(np.float32)
+
+    duration_ms = np.asarray(ctx.col('duration_ms'), dtype=np.float32)
+    play_time_ms = np.asarray(ctx.col('play_time_ms'), dtype=np.float32)
+    video_duration = np.asarray(ctx.video_attr('video_duration'), dtype=np.float32)
+    hourmin = np.asarray(ctx.col('hourmin'), dtype=np.float32)
+    tab = np.asarray(ctx.col('tab'), dtype=np.float32)
+
+    feats = [
+        baseline, refit, din, cf_score, cf_hist, mf_dot, aux,
+        r_fm, r_refit, r_din, r_cf, r_mf, r_aux,
+        fused, fused_minus_fm,
+        duration_ms, play_time_ms, video_duration, hourmin, tab,
+    ]
+    names = [
+        'baseline_score', 'refit_score', 'din_score', 'cf_score', 'cf_hist',
+        'mf_dot', 'aux_click',
+        'r_fm', 'r_refit', 'r_din', 'r_cf', 'r_mf', 'r_aux',
+        'fused', 'fused_minus_fm',
+        'duration_ms', 'play_time_ms', 'video_duration', 'hourmin', 'tab',
+    ]
+
+    X = np.stack(feats, axis=1).astype(np.float32)
+
+    ctx.check(X, names)
+
+    train_cfg = {
+        'objective': 'binary',
+        'group': 'user_day',
+        'hparams': {},
+        'mode': 'features',
+    }
+
+    return X, names, train_cfg
+```
+
+</details>
+
+---
+
+## Iteration 6 — ROLLBACK
+
+**Family:** `history`  
+**Hypothesis:** Add per-user "duration-preference" and "popularity-preference" history profiles: for each user, the shrunk historical long_view rate conditioned on the item's duration decile and on the item's popularity decile, plus the signed gap between the candidate item's log-duration and that user's historically long-viewed log-duration centroid. These are computed from strictly-prior logged interactions and appended to the existing matrix (which keeps ctx.baseline_score, ctx.cf_score, ctx.mf_factors).
+
+**Mechanism (why it should work):** The label long_view is mechanically a function of watch time relative to item duration, so the duration decile of a candidate is the single strongest structural confounder in this dataset - and the diagnostics confirm it: duration_decile carries 0.319 of total GAUC loss with the extremes (bucket 1 = shortest 0.0507, buckets 7/8 = longest 0.0404/0.0387) the worst, i.e. the model applies one global duration->long_view curve while users actually differ in which duration band they finish. A global duration feature is useless per-user only if it is constant across a user's list, but duration VARIES within an evaluation list, and the user-specific tilt (user x duration-decile rate) varies too, so the interaction is exactly the kind of within-user-varying signal the metric can see. The same argument applies to item_pop_decile (0.319 loss, worst at bucket 9, the head items): some users are head-seekers, some are tail-tolerant, and a single global popularity prior inverts on both ends. Shrinking each conditional rate toward the global per-decile rate keeps low-count users from injecting noise, which matters because valid/test sit in the 5x-sparser logging regime.
+
+**Falsifiable prediction:** `{"diagnostic": "inversion_loss_duration", "direction": "decrease"}` → **unverifiable**
+
+**Metrics:** none — iteration produced no validation score.
+
+**Decision rationale:** abandoned after 2 repair attempts:                               cache_dir=variant_path(f'runs/cf_cache_{self.fold_name}'),
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      
+
+**Error / recovery — `runtime`**  
+                              cache_dir=variant_path(f'runs/cf_cache_{self.fold_name}'),
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              fit_end=train_end(self.fold_name))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/kernel/cf_signal.py", line 59, in build_cf_score
+    C = (M.T @ Mw).toarray()
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/.venv/lib/python3.14/site-packages/scipy/sparse/_compressed.py", line 1014, in toarray
+    out = self._process_toarray_args(order, out)
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/.venv/lib/python3.14/site-packages/scipy/sparse/_base.py", line 1693, in _process_toarray_args
+    return   
+*Recovery:* fed the error back to the proposer (repair attempt 1/2)
+
+**Error / recovery — `runtime`**  
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_1k/cand6/runner.py", line 36, in <module>
+    main()
+    ~~~~^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_1k/cand6/runner.py", line 12, in main
+    built = m.build(ctx)
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/runs/kairos_1k/cand6/candidate.py", line 138, in build
+    ctx.check(X, names)
+    ~~~~~~~~~^^^^^^^^^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/agent/context.py", line 134, in check
+    raise ValueError(f"non-finite values in columns {bad}; guard divisions with "
+                     f"np.maximum(denom, eps)")
+ValueError: non-finite values in columns ['dur_gap', 'dur_gap_z']; guard divisions with np.maximum(denom, eps)  
+*Recovery:* fed the error back to the proposer (repair attempt 2/2)
+
+**Error / recovery — `runtime`**  
+                              cache_dir=variant_path(f'runs/cf_cache_{self.fold_name}'),
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              fit_end=train_end(self.fold_name))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/kairos/kernel/cf_signal.py", line 59, in build_cf_score
+    C = (M.T @ Mw).toarray()
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/.venv/lib/python3.14/site-packages/scipy/sparse/_compressed.py", line 1014, in toarray
+    out = self._process_toarray_args(order, out)
+  File "/Users/twishamehta/tiktok/kuairand-starter-kit/.venv/lib/python3.14/site-packages/scipy/sparse/_base.py", line 1693, in _process_toarray_args
+    return   
+*Recovery:* fed the error back to the proposer (repair attempt 3/2)
+
+<details><summary>Code applied this iteration</summary>
+
+```python
+def build(ctx):
+    import numpy as np
+
+    n = ctx.data.n
+    y = ctx.data.y_raw.astype(np.float64)
+    date = ctx.data.date
+    video_id = ctx.data.video_id
+    user_id = ctx.data.user_id
+
+    video_duration = ctx.video_attr('video_duration').astype(np.float64)
+    log_dur = np.log1p(np.maximum(video_duration, 0))
+
+    # item popularity: count of impressions per video_id in the whole log
+    uniq_vid, vid_inv, vid_counts = np.unique(video_id, return_inverse=True, return_counts=True)
+    pop = vid_counts[vid_inv].astype(np.float64)
+    log_pop = np.log1p(pop)
+
+    def decile(x):
+        edges = np.quantile(x, np.linspace(0, 1, 11)[1:-1])
+        d = np.searchsorted(edges, x, side='right')
+        return np.clip(d, 0, 9).astype(np.int64)
+
+    duration_decile = decile(log_dur)
+    pop_decile = decile(log_pop)
+
+    horizon = ctx.fold.horizon
+    is_train_prior = date < horizon
+
+    # global rates per decile computed on prior data
+    def global_rate_map(dec, mask):
+        g = np.zeros(10, dtype=np.float64)
+        for d in range(10):
+            sel = mask & (dec == d)
+            cnt = sel.sum()
+            g[d] = y[sel].sum() / cnt if cnt > 0 else y[mask].sum() / max(mask.sum(), 1)
+        return g
+
+    global_rate_ud = global_rate_map(duration_decile, is_train_prior)
+    global_rate_up = global_rate_map(pop_decile, is_train_prior)
+
+    k = 20.0
+
+    order = np.argsort(date, kind='stable')
+    sorted_date = date[order]
+
+    def build_expanding(keys, is_prior_all):
+        # keys: array of int category ids (combining user with decile)
+        n_local = len(keys)
+        sums = np.zeros(n_local, dtype=np.float64)
+        cnts = np.zeros(n_local, dtype=np.float64)
+        state_sum = {}
+        state_cnt = {}
+        for day in np.unique(sorted_date):
+            day_mask_sorted = sorted_date == day
+            idxs = order[day_mask_sorted]
+            for i in idxs:
+                kk = keys[i]
+                sums[i] = state_sum.get(kk, 0.0)
+                cnts[i] = state_cnt.get(kk, 0.0)
+            for i in idxs:
+                if is_prior_all[i] or day < horizon:
+                    kk = keys[i]
+                    state_sum[kk] = state_sum.get(kk, 0.0) + y[i]
+                    state_cnt[kk] = state_cnt.get(kk, 0.0) + 1.0
+        return sums, cnts
+
+    # combine user_id with decile into single key
+    uid_max = int(user_id.max()) + 1
+    key_ud = user_id.astype(np.int64) * 10 + duration_decile
+    key_up = user_id.astype(np.int64) * 10 + pop_decile
+
+    is_prior_flag = np.zeros(n, dtype=bool)  # unused placeholder, always false since expanding uses day<horizon logic
+
+    sum_ud, cnt_ud = build_expanding(key_ud, is_prior_flag)
+    sum_up, cnt_up = build_expanding(key_up, is_prior_flag)
+
+    gr_ud = global_rate_ud[duration_decile]
+    gr_up = global_rate_up[pop_decile]
+
+    ud_rate = (sum_ud + k * gr_ud) / (cnt_ud + k)
+    up_rate = (sum_up + k * gr_up) / (cnt_up + k)
+    ud_lift = ud_rate - gr_ud
+    up_lift = up_rate - gr_up
+    ud_n = np.log1p(cnt_ud)
+    up_n = np.log1p(cnt_up)
+
+    # user-level long-view duration centroid/std, expanding prior
+    sum_dur = np.zeros(n, dtype=np.float64)
+    sumsq_dur = np.zeros(n, dtype=np.float64)
+    cnt_dur = np.zeros(n, dtype=np.float64)
+    state_sum_dur = {}
+    state_sumsq_dur = {}
+    state_cnt_dur = {}
+    for day in np.unique(sorted_date):
+        day_mask_sorted = sorted_date == day
+        idxs = order[day_mask_sorted]
+        for i in idxs:
+            uu = user_id[i]
+            sum_dur[i] = state_sum_dur.get(uu, 0.0)
+            sumsq_dur[i] = state_sumsq_dur.get(uu, 0.0)
+            cnt_dur[i] = state_cnt_dur.get(uu, 0.0)
+        for i in idxs:
+            if y[i] > 0.5:
+                uu = user_id[i]
+                state_sum_dur[uu] = state_sum_dur.get(uu, 0.0) + log_dur[i]
+                state_sumsq_dur[uu] = state_sumsq_dur.get(uu, 0.0) + log_dur[i] ** 2
+                state_cnt_dur[uu] = state_cnt_dur.get(uu, 0.0) + 1.0
+
+    global_mean_dur = log_dur[is_train_prior].mean() if is_train_prior.sum() > 0 else log_dur.mean()
+    global_std_dur = log_dur[is_train_prior].std() if is_train_prior.sum() > 0 else log_dur.std()
+    if not np.isfinite(global_std_dur) or global_std_dur <= 0:
+        global_std_dur = 1.0
+
+    has_hist = cnt_dur > 0
+    centroid = np.where(has_hist, sum_dur / np.maximum(cnt_dur, 1.0), global_mean_dur)
+    mean_sq = np.where(has_hist, sumsq_dur / np.maximum(cnt_dur, 1.0), global_mean_dur ** 2)
+    var = mean_sq - centroid ** 2
+    var = np.maximum(var, 0.0)
+    std = np.sqrt(var)
+    std = np.where(has_hist & (std > 1e-6), std, global_std_dur)
+
+    dur_gap = log_dur - centroid
+    dur_gap_z = dur_gap / np.maximum(std + 1.0, 1e-3)
+
+    dur_gap = np.nan_to_num(dur_gap, nan=0.0, posinf=0.0, neginf=0.0)
+    dur_gap_z = np.nan_to_num(dur_gap_z, nan=0.0, posinf=0.0, neginf=0.0)
+
+    baseline = ctx.baseline_score
+    cf_score, cf_hist = ctx.cf_score()
+    U, V = ctx.mf_factors(dim=16)
+
+    cols = [
+        baseline.astype(np.float32),
+        cf_score.astype(np.float32),
+        cf_hist.astype(np.float32),
+        ud_rate.astype(np.float32),
+        ud_lift.astype(np.float32),
+        ud_n.astype(np.float32),
+        up_rate.astype(np.float32),
+        up_lift.astype(np.float32),
+        up_n.astype(np.float32),
+        dur_gap.astype(np.float32),
+        dur_gap_z.astype(np.float32),
+        duration_decile.astype(np.float32),
+        pop_decile.astype(np.float32),
+    ]
+    names = [
+        'baseline_score', 'cf_score', 'cf_hist_count',
+        'ud_rate', 'ud_lift', 'ud_n',
+        'up_rate', 'up_lift', 'up_n',
+        'dur_gap', 'dur_gap_z',
+        'duration_decile', 'pop_decile',
+    ]
+
+    for d in range(U.shape[1]):
+        cols.append(U[:, d].astype(np.float32))
+        names.append(f'mf_u_{d}')
+    for d in range(V.shape[1]):
+        cols.append(V[:, d].astype(np.float32))
+        names.append(f'mf_v_{d}')
+
+    X = np.stack(cols, axis=1).astype(np.float32)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+    ctx.check(X, names)
+    return X, names
 ```
 
 </details>

@@ -6,3 +6,52 @@
 [2] ACCEPT    history   pred:HIT  valid 0.6522+-0.0000 (+0.0744)  stall=0  Replace the single-tree-on-everything setup with
 [3] ROLLBACK  history   Add per-user eatures: a smoothed user	times duration-decile
 [4] reject    history   pred:miss valid 0.6166+-0.0000 (-0.0356)  stall=1  Add user-conditional DURATION-AFFINITY features:
+[5] ROLLBACK  ensemble  Replace the single-model matrix with an explicit multi-membe
+[6] ROLLBACK  history   Add per-user "duration-preference" and "popularity-preferenc
+
+STOPPED: token budget exhausted (147,256 >= 120,000)
+SUMMARY
+{
+  "run": "kairos",
+  "iterations": 6,
+  "wall_clock_s": 18905.0,
+  "tokens_in": 70667,
+  "tokens_out": 46082,
+  "manual_interventions": 0,
+  "stall": 1,
+  "converged": false,
+  "reason": "",
+  "best_valid": 0.652216013797553,
+  "families": {
+    "history": {
+      "n": 5,
+      "hits": 1,
+      "scored": 2,
+      "gain": 0.03881739467470868,
+      "best_gain": 0.07441601379755303,
+      "mean_gain": 0.007763478934941737,
+      "hit_rate": 0.5
+    },
+    "ensemble": {
+      "n": 1,
+      "hits": 0,
+      "scored": 0,
+      "gain": 0.0,
+      "best_gain": 0.0,
+      "mean_gain": 0.0,
+      "hit_rate": null
+    }
+  },
+  "tokens_by_model": {
+    "claude-opus-5": {
+      "in": 20072,
+      "out": 13361,
+      "calls": 6
+    },
+    "claude-sonnet-5": {
+      "in": 69182,
+      "out": 44641,
+      "calls": 20
+    }
+  }
+}
