@@ -587,18 +587,22 @@ full writeups in [`reports/`](reports/)
   shorter.
 - **The 27k bonus benchmark is not attempted.** KuaiRand-1k is ported and measured (see
   below); 27k is 322M interactions and was out of reach on a 16GB laptop.
-- **The 1k transfer probe has not finished.** The port is done, the FM baseline is
-  reproduced (valid 0.5778 / test 0.5856), and the porting process found five latent defects
-  in our own code. A campaign is **in flight at the time of writing**: iteration 2 accepted a
-  candidate at validation 0.6522 (+0.0744 over 1k's own baseline, single seed,
-  backtest-confirmed). No 1k hidden-test score has been taken and no 1k submission file
-  exists. A gain that large is, on this project's own argument, a reason for suspicion until
-  confirmed rather than a result to advertise. Current state in
-  [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md). An earlier 1k attempt did stall — every
-  large-gain candidate was rejected because backtest confirmation blew its timeout — and the
-  cause turned out to be narrower than "the verifier is too expensive": prewarm did not cover
-  the confirmation fold, so each check rebuilt two windowed FMs over 11.7M rows inside the
-  sandbox.
+- **The 1k run stopped on its token budget, not its declared rule.** Six iterations
+  against a declared floor of ten (`STOPPED: token budget exhausted (147,256 >= 120,000)`),
+  so its trajectory is shorter than Pure's. The accepted result is triple-checked and the
+  gain is large, but "a clear, sustained ability to keep improving" is better evidenced by
+  the 10-iteration Pure campaign than by this one.
+- **The 1k gain came from architecture, not from personalisation** — which complicates the
+  tidy story. We predicted that 117× more history per user would make personalisation pay.
+  It did not: iterations 3, 4 and 6 all proposed personalisation features and all three
+  failed. The +0.0680 came from rank-level fusion of decorrelated members. The prediction
+  was directionally right about there being more headroom on 1k and wrong about where it
+  was.
+- **An earlier 1k attempt stalled for a reason we initially misdiagnosed.** Every
+  large-gain candidate was rejected because backtest confirmation blew its timeout, which we
+  reported as the verifier being intrinsically too expensive on 11.7M rows. The real cause
+  was narrower: prewarm did not cover the confirmation fold, so each check rebuilt two
+  windowed FMs inside the sandbox. Fixed, and the run then completed.
 - **The leak detector's absolute-ceiling threshold is calibrated on Pure.**
   `HONEST_CEILING` in `_backtest_confirm` comes from measurements on KuaiRand-Pure's
   backtest folds. On another variant it has no calibration behind it, so the detector's
