@@ -8,8 +8,12 @@
 #   export ANTHROPIC_API_KEY=sk-ant-...
 #   ./run_submission.sh
 #
-# Writes to runs/kairos_submission_repro/ so it never overwrites the archived campaign in
-# runs/kairos_agent_submission/.
+# runs/kairos_submission_repro/ is the ARCHIVED campaign that produced the shipped
+# submission.csv - it is Deliverable 3 evidence and this script must never overwrite it.
+# A reproduction goes to a fresh directory, and we refuse to start if it already exists
+# rather than silently merging two runs' candidates into one ledger.
+#
+#   WORKDIR=runs/my_run ./run_submission.sh    # override the destination
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -17,6 +21,19 @@ cd "$(dirname "$0")"
 PY="${PY:-./.venv/bin/python}"
 [ -x "$PY" ] || PY=python3
 export PYTHONWARNINGS=ignore
+
+ARCHIVE=runs/kairos_submission_repro
+WORKDIR="${WORKDIR:-runs/kairos_submission_rerun}"
+if [ "$WORKDIR" = "$ARCHIVE" ]; then
+  echo "refusing to write to $ARCHIVE - that is the archived submitted campaign." >&2
+  echo "set WORKDIR to something else." >&2
+  exit 1
+fi
+if [ -e "$WORKDIR" ]; then
+  echo "$WORKDIR already exists; move it aside or set WORKDIR to a fresh path." >&2
+  exit 1
+fi
+echo "reproducing the submitted campaign into $WORKDIR"
 
 # Convergence rule, declared BEFORE the run and recorded here, as FAQ 2.9.1 permits:
 #   eps = 0.002 (organizer default)
@@ -36,7 +53,7 @@ from kairos.agent.prior import PRIOR_PURE
 
 p = TwoStageProposer(planner='claude-opus-5', coder='claude-sonnet-5')
 k = Kairos(p, max_iters=50, max_seconds=6*3600, seeds=(0,1,2),
-           workdir='runs/kairos_submission_repro',
+           workdir='$WORKDIR',
            eps=0.002, stall_limit=5, min_iters=10,
            max_tokens_total=150000, prior_summary=PRIOR_PURE,
            baseline_valid=0.6016,

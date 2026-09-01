@@ -71,12 +71,32 @@ def render(run_dir, out_path, title, notes=''):
     open(out_path, 'w').write('\n'.join(L))
     print(f'  {out_path}: {len(entries)} iterations, {n_int} interventions')
 
+PURE_NOTES = (
+    'Per-iteration log required by Deliverable 3, generated from the run ledger by\n'
+    '`experiments/export_run_log.py`. This is the campaign that produced the submitted\n'
+    '`submission.csv`. Convergence rule declared before the run per FAQ 2.9.1:\n'
+    'eps = 0.002, N = 5, minimum-iteration floor = 10. The run ended on the self-imposed\n'
+    '150k token budget rather than on that rule — see `reports/RESULTS.md`.')
+
+ONEK_NOTES = (
+    'Bonus benchmark. The same agent, unchanged, pointed at KuaiRand-1k — trained on 1k\'s\n'
+    'own splits only, per FAQ 2.9.2. Single-seed by design; see `reports/RESULTS_1K.md`\n'
+    'for why, and for the current status of this run.')
+
 if __name__ == '__main__':
-    render('runs/kairos_live', 'reports/ITERATION_LOG.md',
-           'KAIROS run log — KuaiRand-Pure (required benchmark)',
-           'Per-iteration log required by Deliverable 3. Generated from the run ledger by\n'
-           '`experiments/export_run_log.py`; every field is read from the ledger, never\n'
-           'restated by hand.')
+    # Defaults are the SUBMITTED campaign. This previously pointed at runs/kairos_live,
+    # which is a different (earlier) run - regenerating would have silently replaced the
+    # submitted Deliverable 3 log with the wrong campaign's iterations.
+    args = sys.argv[1:]
+    if args:
+        render(args[0], args[1] if len(args) > 1 else 'reports/ITERATION_LOG.md',
+               args[2] if len(args) > 2 else 'KAIROS run log')
+        raise SystemExit(0)
+
+    render('runs/kairos_submission_repro', 'reports/ITERATION_LOG.md',
+           'KAIROS run log — KuaiRand-Pure (required benchmark, submitted campaign)',
+           PURE_NOTES)
     if os.path.exists('runs/kairos_1k/ledger.jsonl'):
         render('runs/kairos_1k', 'reports/ITERATION_LOG_1K.md',
-               'KAIROS run log — KuaiRand-1k (bonus benchmark, transfer probe)')
+               'KAIROS run log — KuaiRand-1k (bonus benchmark, transfer probe)',
+               ONEK_NOTES)

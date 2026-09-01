@@ -3,7 +3,8 @@
 Per-iteration log required by Deliverable 3, generated from the run ledger by
 `experiments/export_run_log.py`. This is the campaign that produced the submitted
 `submission.csv`. Convergence rule declared before the run per FAQ 2.9.1:
-eps = 0.002, N = 5, minimum-iteration floor = 10.
+eps = 0.002, N = 5, minimum-iteration floor = 10. The run ended on the self-imposed
+150k token budget rather than on that rule — see `reports/RESULTS.md`.
 
 ## Summary
 

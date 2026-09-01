@@ -1,3 +1,19 @@
+> **Historical document — superseded numbers.** This report was written during the project
+> and describes the earlier 3-iteration campaign (`runs/kairos_agent_submission`), which
+> scored valid 0.6034 / test 0.5988. **That is not the submitted result.** The shipped
+> `submission.csv` comes from the later 10-iteration campaign in
+> `runs/kairos_submission_repro`: valid 0.6030 / test **0.5983**, `score_dataset` **+0.0037**.
+> See [`RESULTS.md`](RESULTS.md) for the current figures and
+> [`_results_note.md`](_results_note.md) for why the lower-scoring campaign was the one
+> submitted.
+>
+> **Withdrawn claim.** Where this document reports a prediction hit-rate of 0/2 → 2/3, that
+> reading did not survive a larger sample: the submitted 10-iteration campaign scored
+> **1 of 10**. The claim that the adversarial critic lifted the hit-rate is withdrawn. The
+> reasoning about *why* predictions are worth scoring stands; the number does not.
+>
+> Kept unedited as a record of what was believed at the time.
+
 # What we found on KuaiRand-Pure
 
 > **Headline.** The submission is produced autonomously: KAIROS proposed, wrote, evaluated

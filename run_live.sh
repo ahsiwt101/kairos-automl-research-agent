@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+# DEVELOPMENT script, kept for provenance. This is NOT the submitted configuration -
+# it resumes from baseline_valid=0.6034 with max_iters=12 and no declared eps/N/floor.
+# The submitted campaign is run_submission.sh; reproduce that one.
 set -uo pipefail
-cd /Users/twishamehta/tiktok/kuairand-starter-kit
-source "/private/tmp/claude-501/-Users-twishamehta-tiktok-kuairand-starter-kit/a9d09e32-9cbd-4d9a-a593-8000cae399d0/scratchpad/anthropic_env.sh"
+cd "$(dirname "$0")"
+: "${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY before running}"
 export PYTHONWARNINGS=ignore
 exec ./.venv/bin/python -u -c "
 import sys; sys.path.insert(0,'.')
