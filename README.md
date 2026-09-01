@@ -191,7 +191,52 @@ wrong rather than loud. A second dataset is an assumption detector, independent 
 ## How the agent works
 
 
-A single loop, roughly 300 lines in [`kairos/agent/loop.py`](kairos/agent/loop.py):
+Two gates stand between a candidate and acceptance. A validation improvement alone is
+never enough, and the hidden test split sits outside the loop entirely:
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 460, "rankSpacing": 38, "nodeSpacing": 34}}}%%
+flowchart TD
+    P["PROPOSE<br/>Opus 5 plans · Sonnet 5 codes · critic checks"]
+    A{"STATIC<br/>AUDIT"}
+    R["RUN & EVALUATE<br/>isolated subprocess · GAUC + nDCG@5 on validation"]
+    D{"beats<br/>incumbent?"}
+    C{"backtest<br/>confirms?"}
+    REJ["REJECT"]
+    ACC["ACCEPT<br/>new incumbent"]
+    L["LEDGER<br/>hypothesis, diff, metrics, prediction · then the stop rule"]
+    T["HIDDEN TEST<br/>validation-best checkpoint, scored once after the run ends"]
+
+    P --> A
+    A -- "violation → bounded repair" --> P
+    A -- "pass: sandbox + leakage probe clean" --> R --> D
+    D -- "no" --> REJ
+    D -- "yes, on validation primary" --> C
+    C -- "disconfirmed: gap or ceiling fails" --> REJ
+    C -- confirmed --> ACC
+    C -. "unverifiable" .-> ACC
+    REJ --> L
+    ACC --> L
+    L -- "continue" --> P
+    L -- "run ends" --> T
+
+    classDef gate stroke:#d29922,stroke-width:2px
+    classDef good stroke:#3fb950,stroke-width:2px
+    classDef bad stroke:#f85149,stroke-width:2px
+    classDef sealed stroke:#a371f7,stroke-width:2px,stroke-dasharray:6
+    class A,D,C gate
+    class ACC good
+    class REJ bad
+    class T sealed
+```
+
+The dotted edge is the one place the second gate yields: if the backtest cannot run at
+all, an *ordinary* gain is accepted and flagged `unconfirmed_accept` in the ledger,
+while an implausible one is still blocked. An infrastructure failure and a
+disconfirmation are different evidence and are not recorded as the same thing.
+
+In detail — a single loop, roughly 300 lines in
+[`kairos/agent/loop.py`](kairos/agent/loop.py):
 
 1. **Propose** — a two-stage LLM step. Opus 5 plans a hypothesis, its *mechanism*, and one
    falsifiable prediction (a named diagnostic and a direction). Sonnet 5 writes the code. A
