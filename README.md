@@ -30,7 +30,9 @@ them, because "converged" alone would misdescribe how the loop exited. The score
 submission is the validation-best checkpoint at the point the run stopped, which is what
 FAQ 2.9.1(c) requires; the hard caps (50 iterations, 6 h) were never approached.
 
-**What "0 interventions" does and does not mean.** No human touched the run once it
+### What "0 interventions" does and does not mean
+
+No human touched the run once it
 started: no code was edited, no candidate was hand-fixed, no result was overridden. But the
 run is *seeded* with [`PRIOR_PURE`](kairos/agent/prior.py) — a human-written lab notebook
 carrying the incumbent's validation score, a "WHAT WON" section naming the winning
@@ -62,6 +64,20 @@ Reproduce the submitted run: `export ANTHROPIC_API_KEY=... && ./run_submission.s
 re-score the shipped submission in ~30 s with no API key:
 `./.venv/bin/python experiments/verify_submission.py` ·
 full writeups in [`reports/`](reports/)
+
+**Contents** — [Results](#how-this-scores-against-the-judging-criteria) ·
+[The finding](#the-finding-this-is-built-on) ·
+[Iteration-by-iteration](#the-submitted-run-iteration-by-iteration) ·
+[How the agent works](#how-the-agent-works) ·
+[Deliverables](#deliverables) ·
+[Setup](#setup) · [Reproducing](#reproducing) ·
+[Rules compliance](#rules-compliance) ·
+[Limitations](#limitations-honestly)
+
+This README is self-contained: every number a judge needs is below, with links to the raw
+artifact behind each one. Nothing essential lives only in `reports/`.
+
+---
 
 ## How this scores against the judging criteria
 
@@ -139,6 +155,173 @@ iterations, two accepts, both independently confirmed.
 
 The whole submitted campaign costs about a dollar and a quarter and finishes inside twenty
 minutes on a laptop, which is the point: this is a loop a researcher could actually run.
+
+---
+
+## The finding this is built on
+
+*Self-contained: the tables below are the evidence, not pointers to it.
+Full workings in [`reports/FINDINGS.md`](reports/FINDINGS.md).*
+
+### A greedy agent scores below the baseline while looking like it won
+
+We ran a control arm: an agent that does the obvious thing and follows its validation
+score. Over a pool varying features **and** training objective, on the official fold:
+
+| pipeline | valid | hidden test |
+|---|---|---|
+| causal features + LambdaRank | **0.7330** ← best on validation | **0.5790** ← worst on test |
+| causal features + binary | 0.7170 | 0.5916 |
+| frozen features + binary | 0.5987 | 0.5910 |
+| frozen features + LambdaRank | 0.5973 | **0.5921** ← best on test |
+
+Greedy argmax-on-validation takes 0.5790 where 0.5921 was available: **regret 0.0131**, and
+a submission **0.0156 below the official baseline it set out to beat** — while showing a
+validation score of 0.73 that looks like the task was solved.
+
+**The damage is worse than lost points: it inverts the ranking of design choices.** With
+leaky features, LambdaRank looks like the best objective in the pool and is actually the
+worst. With honest features, LambdaRank genuinely *is* the best. So the greedy agent doesn't
+just pick a bad candidate — it learns the *opposite* lesson about its own objective and
+carries it into every later iteration.
+
+Which selection signal should an agent trust?
+
+| selection signal | rank correlation with hidden test |
+|---|---|
+| official validation | +0.297 |
+| backtest-fold transfer | **+0.685** |
+
+That is why KAIROS selects on **transfer across three temporal backtest folds**, not on
+argmax over one validation set.
+
+### Why the honest ceiling is ~0.60, not 0.86
+
+Nested model fits on validation, each rung adding one information source:
+
+| signal | standalone | cumulative | marginal |
+|---|---|---|---|
+| context (tab) | 0.5399 | 0.5405 | — |
+| + item quality | 0.5807 | **0.5955** | **+0.0550** |
+| + item × context | 0.5877 | 0.5966 | +0.0011 |
+| + duration fit (user × durbucket) | 0.4914 | 0.5935 | −0.0030 |
+| + affinity (user × author) | 0.4825 | 0.5938 | +0.0002 |
+| + affinity (user × item) | 0.4818 | 0.5940 | +0.0002 |
+
+**Context plus item quality alone reaches 0.5955 — already above the official baseline's
+0.5946.** Every personalisation feature after that is worth approximately nothing: the FM's
+ID embeddings buy about **+0.006** over a model with no personalisation at all. On
+KuaiRand-Pure the "recommender" part of the recommender system is worth ~0.006 of primary;
+the task is ~95% context and item quality.
+
+This is the context for reading **+0.0037**. It is not a small share of the 0.8645 oracle;
+it is a meaningful share of the ~0.006 that personalisation actually has to give, and it
+explains why the organizers' own feature and capacity ablations went flat.
+
+### What did not work — roughly 30 null results
+
+Recorded because negative results at this noise floor are the substance of the work
+(per-seed σ = 0.0008 against a decision threshold of 0.002, so anything single-seed is
+unsafe):
+
+- **Objective alignment** — all six losses within seed noise; LambdaRank/soft-nDCG *worst*
+  on validation (0.5936 vs BCE 0.6010)
+- **Watch-time regression targets** (L2 / Huber / D2Q) — far below the binary target
+- **Recency weighting** of training rows — a single-seed phantom, retracted on re-run
+- **Eight item-quality estimators** (time-decay × hierarchical shrinkage) — best +0.0002
+- **Four tab encodings** — all within noise
+- **Seed averaging beyond 3** — saturates (1/3/5/10 seeds → 0.6013/0.6026/0.6027/0.6027)
+- **DIN history reweighting** — all modes within noise, and a *perfect* train/serve
+  distribution match was the worst option
+- **Power/gamma rank fusion** — raised validation 0.6031→0.6035, lowered test
+  0.5985→0.5982: our own central finding, reproduced on our own work
+- **Monotone post-processing** — provably a no-op: GAUC and nDCG depend only on within-user
+  order, which a monotone map cannot change
+
+### Bonus benchmark: KuaiRand-1k
+
+The same agent, same code, `KAIROS_VARIANT=1k` — 11.7M rows, 4.37M items, and **117× more
+history per user** (5,143 rows/user vs Pure's 44).
+
+| | Pure | 1k |
+|---|---|---|
+| FM baseline (valid / test) | 0.6016 / 0.5946 | 0.5778 / 0.5856 |
+| agent best (validation) | 0.6030 | **0.6522 (+0.0744)** |
+| backtest-confirmed | yes | yes — gap −0.0026 vs 0.035 threshold |
+
+The 20× larger gain supports the structural prediction: personalisation is worth ~0.006 on
+Pure because 44 rows per user is too few to estimate a user's preferences, and 1k removes
+exactly that constraint. **Caveat:** the leak detector's absolute-ceiling threshold is
+calibrated on Pure and cleared by only 0.0060 here, so the *gap* check is what carries that
+verdict. Details in [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md).
+
+Porting to 1k also found **five latent defects in our own code** — positional side-table
+indexing, an inert `RLIMIT_AS` guard, cross-variant cache collisions, an unguarded
+evaluation subprocess, and a prewarm deadlock — every one invisible on Pure and silently
+wrong rather than loud. A second dataset is an assumption detector, independent of score.
+
+---
+
+## The submitted run, iteration by iteration
+
+Every iteration, verbatim from the ledger. Generated by `experiments/export_run_log.py`;
+full hypotheses, mechanisms and code diffs in
+[`reports/ITERATION_LOG.md`](reports/ITERATION_LOG.md).
+
+| # | decision | valid | Δ vs incumbent | prediction | family | hypothesis |
+|---|---|---|---|---|---|---|
+| 1 | accept | 0.6028 | +0.0012 | HIT | ensemble | Beat the incumbent 0.6034 rank-fusion blend with a better-composed, variance-r… |
+| 2 | reject | 0.5997 | -0.0031 | miss | ensemble | Broaden the fusion from the current 2-member blend to a 5-member plain-linear … |
+| 3 | reject | 0.5975 | -0.0054 | miss | history | Add personalised item-attribute affinity features (user x video-duration-bucke… |
+| 4 | reject | 0.6014 | -0.0014 | miss | ensemble | Feed LightGBM a fusion matrix built from FIVE decorrelated member signals (ctx… |
+| 5 | reject | 0.5998 | -0.0030 | miss | ensemble | Consolidation move: extend the incumbent fusion from the two strongly-correlat… |
+| 6 | reject | 0.6007 | -0.0021 | miss | ensemble | Consolidation move: build the incumbent matrix but add an explicitly precomput… |
+| 7 | reject | 0.6023 | -0.0006 | miss | ensemble | CONSOLIDATION (0 misses left, so this is deliberately the low-variance move, n… |
+| 8 | accept | 0.6030 | +0.0001 | miss | ensemble | CONSOLIDATION move (0 misses left, so minimal-risk): keep the incumbent linear… |
+| 9 | reject | 0.6020 | -0.0009 | miss | ensemble | CONSOLIDATION move (0 misses left): keep the incumbent rank-fusion exactly as-… |
+| 10 | reject | 0.5982 | -0.0047 | miss | ensemble | Consolidation move (not exploratory): keep the incumbent fusion exactly as-is … |
+
+Two accepts (iterations 1 and 8), both independently backtest-confirmed:
+
+| accept | backtest_a valid | backtest_a test | gap (threshold 0.035) | verdict |
+|---|---|---|---|---|
+| iteration 1 | 0.5968 | 0.5970 | −0.0001 | CONFIRMED |
+| iteration 8 | 0.5967 | 0.5979 | −0.0012 | CONFIRMED |
+
+**Prediction hit-rate: 1 of 10.** An earlier 3-iteration run scored 2 of 3 and we suggested
+an adversarial critic had improved the agent's reasoning. Ten iterations is a more honest
+sample and the claim is withdrawn — the agent beats the baseline while the diagnostics it
+predicts will move largely do not move. Reported because scoring predictions is only
+worthwhile if the unflattering answer is reported too.
+
+---
+
+## How the agent works
+
+A single loop, roughly 300 lines in [`kairos/agent/loop.py`](kairos/agent/loop.py):
+
+1. **Propose** — a two-stage LLM step. Opus 5 plans a hypothesis, its *mechanism*, and one
+   falsifiable prediction (a named diagnostic and a direction). Sonnet 5 writes the code. A
+   critic pass audits whether the prediction actually follows from the mechanism.
+2. **Audit statically** — an allowlisted sandbox; outcome columns are blocked at
+   `ctx.col()`; a leakage probe requires that any user-level statistic derived from a new
+   primitive has exactly zero within-user variance.
+3. **Run in isolation** — a subprocess bounded in both time and memory, with an RSS
+   watchdog so an over-allocating candidate cannot take the parent down.
+4. **Evaluate** — vectorised GAUC/nDCG@5, verified identical to the organizers'
+   `evaluate.py` to 4.4e-16 across seven stress cases including heavy ties, and 13× faster.
+5. **Confirm** — every accepted candidate is re-run against a backtest fold, checked on two
+   independent leak signals (valid−test gap, absolute ceiling).
+6. **Score the prediction** — did the diagnostic move as promised? Recorded as HIT, miss, or
+   *unverifiable* — never silently as a miss.
+7. **Decide** — accept only on validation improvement plus confirmation; log the outcome,
+   the code diff, and any error and recovery.
+
+The agent's action space is the `ctx` API in
+[`kairos/agent/context.py`](kairos/agent/context.py): frozen-window label aggregates with an
+explicit horizon, out-of-sample model scores (FM, DIN, implicit-ALS MF, item-item CF,
+disjoint sub-space experts), item and user attributes, and a `mode='scores'` path that lets
+a candidate train its own models and fuse their outputs at rank level.
 
 ---
 
