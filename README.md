@@ -12,7 +12,7 @@ Benchmark: KuaiRand-Pure, within-user ranking on `long_view`, primary = mean(GAU
 
 GAUC 0.6653 (+0.0043) · nDCG@5 0.5313 (+0.0031) · `score_dataset` **+0.0037**
 
-**Bonus benchmark — KuaiRand-1k: primary 0.5856 → 0.6536, `score_dataset` +0.0680**, from the same agent with one environment variable changed ([details](#bonus-benchmark-kuairand-1k--00680)).
+**Bonus benchmark — KuaiRand-1k: primary 0.5856 → 0.6536, `score_dataset` +0.0680**, from the same agent with one environment variable changed ([details](#bonus-benchmark-kuairand-1k)).
 
 **10 iterations · 2 accepts · 0 manual interventions within the run · 941 s ·
 164,789 tokens (≈$1.37) · 0 GPU-hours.** Both accepted candidates were independently
