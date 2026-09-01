@@ -1,1 +1,1 @@
-{"objective": "scores", "valid_primary": 0.652216013797553, "valid_std": 0.0, "valid_gauc": 0.6809547231878689, "valid_ndcg": 0.6234773044072371, "seeds": [0.652216013797553], "best_iter": null}
+{"objective": "binary", "valid_primary": 0.6166173946747087, "valid_std": 0.0, "valid_gauc": 0.6610901852542218, "valid_ndcg": 0.5721446040951955, "seeds": [0.6166173946747087], "best_iter": 300}

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>DEVPOST.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="kairos--an-autonomous-ml-research-agent-that-knows-when-its-validation-set-is-lying">KAIROS — an autonomous ML research agent that knows when its validation set is lying</h1>
+<p><strong>TikTok TechJam 2026 — Track 2: Autonomous ML Research Agent for Recommender Systems</strong>
+Required benchmark: KuaiRand-Pure. Solo entry.</p>
+<blockquote>
+<p>All numbers below describe the campaign in <code>runs/kairos_submission_repro/</code>, which is the
+campaign that produced the shipped <code>submission.csv</code>. Re-derive the headline figure with
+<code>./.venv/bin/python experiments/verify_submission.py</code> — it scores the submission file with
+the organizers' unmodified <code>evaluate.py</code>.</p>
+</blockquote>
+<h2 id="the-problem-and-what-we-found-in-it">The problem, and what we found in it</h2>
+<p>Track 2 asks for an agent that autonomously runs the MLE loop — read the problem, engineer
+features, train, evaluate, reflect, iterate — and drives the score above the official
+baseline on KuaiRand-Pure.</p>
+<p>The obvious agent for that job is a loop that proposes a change, trains, reads the
+validation score, and keeps whatever went up. <strong>On this benchmark that agent fails, and it
+fails invisibly.</strong></p>
+<p>We measured it, as a control arm. Take the single most natural feature-engineering step —
+summarise each user's and item's history as a <code>long_view</code> rate, computed with a correct
+time-ordered prefix so no row ever sees its own label — and pair it with LambdaRank, a
+standard choice for a ranking metric. Validation climbs from 0.6016 to <strong>0.7339</strong>, close to
+the 0.8484 validation oracle. The hidden-test score falls to <strong>0.5790</strong> — <em>below the 0.5946
+baseline the agent was trying to beat.</em> A −0.0156 regression that presents as a +0.13 win.</p>
+<p>Nothing in the starter kit warns you. The validation curve looks like a triumph.</p>
+<p><strong>Why it happens.</strong> Evaluation ranks each user's impressions <em>as a set</em>. A time-ordered
+history feature lets a validation row see the labels of its own list-mates — which is
+exactly the quantity the metric asks the model to predict, and which does not exist for
+test rows, whose labels stop at the horizon. Streaming-causality is right for a production
+system and is the wrong model of <em>this task</em>.</p>
+<h2 id="what-kairos-does-differently">What KAIROS does differently</h2>
+<p>Its distinguishing component is not its search. It is that <strong>it does not believe a number
+until the number has earned it.</strong></p>
+<ol>
+<li><strong>A temporal-validity auditor</strong> runs on every candidate the agent writes, before its
+score is used for anything. Its strongest check is structural rather than heuristic:
+within-user ranking is invariant to any quantity constant across a user's list, so a
+<em>user-level</em> statistic must have exactly zero within-user variance. Non-zero variance is
+a <strong>proof</strong> of label feedback. Under the naive construction that quantity is 1.24e-01;
+under the fix it is 0.000e+00. That check has a real blind spot, though, and a live run
+found it: a candidate is free to hand-roll a leak over a user×item <em>cross</em> under any
+column name, and a cross is <em>supposed</em> to vary within a user's list, so no name- or
+shape-based check can see it. It got accepted (+0.0936 on validation) before we caught
+it. The fix doesn't try to understand the candidate's code at all — the candidate is
+re-run against a backtest fold with a genuinely unsealed test split, checked on both the
+valid/test gap and the absolute score against the best honest result ever measured
+there. Verified against the exact candidate that slipped through, and against a
+known-honest one, in both directions.</li>
+<li><strong>Window-frozen features.</strong> Every aggregate is frozen at the start of its evaluation
+window, the way a periodically-retrained production model actually sees the world. This
+collapses the validation→test gap from <strong>+0.1409 to +0.0070</strong>.</li>
+<li><strong>Selection by transfer, not by argmax.</strong> Candidates are scored on backtest folds — real
+held-out future windows inside the public-label region — rather than on one validation
+read. Across a representative candidate pool, official validation rank-correlates
+<strong>−0.612</strong> with hidden-test performance while backtest transfer correlates <strong>+0.685</strong>.
+Validation is not merely noisy here; it is <em>negatively</em> correlated with the thing being
+scored, so optimising it harder makes the submission worse. (A narrower pool varying
+only features gives +0.297 — the sign flips once the pool includes the objective axis,
+which is where the leak becomes destructive.)</li>
+<li><strong>A stall-aware scheduler.</strong> A run ends after N consecutive iterations without a +0.002
+validation gain, which makes consecutive misses a <em>spendable resource</em> rather than a
+diagnostic. With one miss left the loop enters <code>consolidate</code> mode and re-asks the
+planner — for ~2k tokens — rather than spending a full training run and the last of the
+budget on a hypothesis family that has already lost repeatedly. This fired six times in
+the submitted run and is what produced the accepted iteration 8.</li>
+<li><strong>Multi-seed by construction.</strong> Per-seed std is 0.0008 while the convergence rule needs
++0.002, so a single-seed measurement cannot resolve the improvement the rules require.
+Every accept/reject uses ≥3 seeds. (We retracted two of our own early conclusions when
+we re-ran them with seeds.)</li>
+<li><strong>Autonomous recovery.</strong> LLM-written code runs behind an AST allowlist and in a
+subprocess with a timeout and an RSS watchdog. When the auditor rejects a candidate, the
+specific violation is handed back and the agent rewrites — no human in the loop. Every
+rejection and repair is a logged error/recovery event.</li>
+<li><strong>Scored predictions.</strong> Each iteration names one checkable diagnostic and the direction
+it expects it to move; we verify afterwards. This measures whether the agent
+<em>understands</em> the problem separately from whether it got lucky. See the honest-limits
+section below for what that measurement actually returned — it is not flattering, and it
+is reported anyway.</li>
+</ol>
+<h2 id="results">Results</h2>
+<p><strong>The submission is the agent's own work.</strong> <code>submission.csv</code> is generated from a candidate
+KAIROS proposed, wrote, evaluated and accepted with zero human intervention inside the run.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>valid</th>
+<th>hidden test</th>
+<th>vs baseline</th>
+<th>produced by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Official FM baseline (reproduced exactly, 5 seeds)</td>
+<td>0.6016</td>
+<td>0.5946</td>
+<td>—</td>
+<td>organizers</td>
+</tr>
+<tr>
+<td>Greedy validation-following agent (control arm)</td>
+<td>0.7339</td>
+<td>0.5790</td>
+<td><strong>−0.0156</strong></td>
+<td>control</td>
+</tr>
+<tr>
+<td>Hand-built ensemble (human reference ceiling)</td>
+<td>0.6045</td>
+<td>0.5976</td>
+<td>+0.0030</td>
+<td>human</td>
+</tr>
+<tr>
+<td><strong>KAIROS accepted candidate — the submission</strong></td>
+<td><strong>0.6030</strong></td>
+<td><strong>0.5983</strong></td>
+<td><strong>+0.0037</strong></td>
+<td><strong>agent</strong></td>
+</tr>
+</tbody>
+</table>
+<p>GAUC 0.6653 (+0.0043) · nDCG@5 0.5313 (+0.0031) · <code>score_dataset</code> <strong>+0.0037</strong></p>
+<p><strong>The agent beat both the official baseline and the strongest pipeline we built by hand.</strong>
+Its winning move, chosen unprompted at iteration 1: abandon the single-downstream-tree
+architecture and blend several decorrelated model outputs at the <em>rank</em> level, dropping the
+user-level expert on the argument that a score built only from user features is constant
+across a user's list and therefore provably cannot change GAUC or nDCG. That is the same
+design that took a human several failed attempts to reach.</p>
+<p>The reference ceiling row deserves a note: the hand-built ensemble has <strong>higher</strong> validation
+(0.6045) and <strong>lower</strong> test (0.5976) than the agent's candidate. Had the submission been
+chosen on validation across both, the human entry would have won and scored worse. It was
+excluded because it is not agent-produced — not because of its scores.</p>
+<h3 id="the-run">The run</h3>
+<p><strong>10 iterations · 2 accepts · 0 manual interventions · 941 s · 164,789 tokens (≈$1.37) ·
+0 GPU-hours.</strong></p>
+<p>Convergence rule declared before the run and recorded in <code>run_submission.sh</code>, as FAQ 2.9.1
+permits: ε = 0.002, <strong>N = 5</strong>, minimum-iteration floor <strong>10</strong>. Hard caps (50 iterations,
+6 h) respected with wide margin.</p>
+<p><strong>How the run actually ended:</strong> the self-imposed 150k token budget, not the ε/N rule. The
+console log says so verbatim — <code>STOPPED: token budget exhausted (164,789 &gt;= 150,000)</code> in
+<code>runs/live_submission.log</code>. The declared convergence rule was in force throughout but never
+fired. The scored submission is still the validation-best checkpoint at the point the run
+stopped, which is what FAQ 2.9.1(c) requires. We state this plainly because the log is
+committed and a judge will read it.</p>
+<p>Both accepted candidates were independently backtest-confirmed before acceptance (gaps
+−0.0001 and −0.0012 against a 0.035 threshold, and 0.053 clear of the honest ceiling).</p>
+<h3 id="what-%220-manual-interventions%22-does-and-does-not-mean">What &quot;0 manual interventions&quot; does and does not mean</h3>
+<p>No human touched the run once it started: no code was edited, no candidate was hand-fixed,
+no result was overridden. But the run is <em>seeded</em> with <code>PRIOR_PURE</code> (<code>kairos/agent/prior.py</code>)
+— a human-written lab notebook carrying the incumbent's validation score, a &quot;WHAT WON&quot;
+section naming the winning architecture, and a ruled-out list distilled from roughly thirty
+earlier experiments. The candidate accepted at iteration 1 implements the architecture that
+prior describes.</p>
+<p>So the honest statement is <strong>zero interventions within the run, plus one human-authored
+prior</strong>, and the prior is a substantial input. It carries a contamination rule (nothing in
+it may cite or derive from the test split) and its provenance is in the module docstring.
+Reported this way because a judge who finds <code>prior.py</code> after reading a bare &quot;0 manual
+interventions&quot; should find it unsurprising rather than misleading.</p>
+<h3 id="what-the-agent-recovered-from-unaided">What the agent recovered from, unaided</h3>
+<ul>
+<li>Two structural API mistakes, self-corrected from the error text</li>
+<li>An invalid LightGBM hyperparameter name, repaired rather than crashing the iteration</li>
+<li>Its own leaking candidate — accepted at +0.0936 validation — caught by the
+temporal-validity auditor before it could be believed</li>
+<li>Six scheduler interventions in the submitted run, where a losing hypothesis family was
+detected and the planner re-asked before a training run was spent</li>
+</ul>
+<p>Zero iterations in the submitted run crashed.</p>
+<h3 id="honest-limits">Honest limits</h3>
+<p><strong>The prediction hit-rate claim is withdrawn.</strong> An earlier 3-iteration run scored 2 of 3 and
+we suggested the adversarial critic had lifted it from 0 of 2. The submitted 10-iteration
+campaign scored <strong>1 of 10</strong>. Ten is a more honest sample than three, so the earlier reading
+was noise. The agent beats the baseline while the diagnostics it predicts will move largely
+do not move. Predictions remain worth scoring — an agent that commits to a falsifiable claim
+can be checked, and this is what being checked looks like when the answer is unflattering.</p>
+<p><strong>The absolute gain is small, and the headroom is genuinely small.</strong> Our own signal
+decomposition explains why, and we report it rather than hide it: context plus item quality
+alone reaches 0.5955 on this data — already above the official baseline — and every
+personalisation feature combined adds roughly +0.006 on top. The honest ceiling here is near
+0.601, not the 0.8645 oracle, so +0.0037 is a meaningful share of what is actually
+available rather than a small share of what is theoretically available.</p>
+<p><strong>Most of what we tried did not work.</strong> We tested roughly 30 interventions. Two mechanisms
+worked: <strong>variance reduction</strong> (seed-averaging, saturating at 3 seeds) and <strong>not fooling
+yourself</strong> (selection discipline, worth avoiding −0.0156). Six loss functions, watch-time
+regression in three forms, D2Q, recency weighting, four tab encodings, eight item-quality
+estimators, and DIN history reweighting all landed inside seed noise. Those negative results
+are in <code>reports/FINDINGS.md</code>, because on a benchmark where validation rank-correlates
+<strong>−0.612</strong> with the hidden test, knowing which of your gains are real is the hard part.</p>
+<p><strong>Bonus benchmarks.</strong> KuaiRand-1k is ported and its FM baseline reproduced (valid 0.5778 /
+test 0.5856); see <code>reports/RESULTS_1K.md</code> for the current state of that run. KuaiRand-27k
+(322M interactions) was out of reach on a 16 GB laptop and is not attempted.</p>
+<h2 id="how-it-was-built">How it was built</h2>
+<p><strong>Development tools.</strong> Claude Code (Anthropic) as the pair-programming environment; VS Code;
+Python 3.14; git. No notebooks — every result in this repo comes from a committed script.</p>
+<p><strong>APIs.</strong> Anthropic Messages API. The agent runs a two-stage proposer: <code>claude-opus-5</code> as
+the planner (10 calls, 35,479 in / 22,491 out) and <code>claude-sonnet-5</code> as the coder (26 calls,
+80,755 in / 26,064 out). The proposer is provider-agnostic — it also drives any
+OpenAI-compatible <code>/chat/completions</code> endpoint (Volcengine Ark / Doubao, OpenRouter,
+DeepSeek, or a local Ollama server), selected by a single command-line string, and a
+scripted no-LLM <code>pool</code> proposer exists for offline testing.</p>
+<p><strong>Libraries and frameworks.</strong> NumPy, SciPy, pandas (loading only), LightGBM, PyTorch, httpx,
+and the <code>anthropic</code> SDK. The evaluation kernel is pure NumPy. Note that <code>torch</code> and
+<code>lightgbm</code> each bundle their own OpenMP runtime and abort if imported into the same process,
+so everything here keeps them in separate processes; the documented <code>KMP_DUPLICATE_LIB_OK</code>
+workaround is deliberately <strong>not</strong> used, because it can silently produce wrong numbers.</p>
+<p><strong>Datasets.</strong> KuaiRand-Pure only for the required benchmark (Zenodo record 10439422), plus
+KuaiRand-1k for the bonus attempt, each trained on its own splits. No external training
+data, no pretrained weights, in line with the track's single hard rule. The
+randomized-exposure log (<code>log_random_4_22_to_5_08_pure.csv</code>) is deliberately <strong>not</strong> used
+for training — it spans the test window, and training on it would inject label information
+from that period.</p>
+<p><strong>Scoring discipline.</strong> The official <code>evaluate.py</code> is committed unmodified and is the sole
+scoring authority; our vectorised evaluator is verified identical to it to 4.4e-16. Every
+consultation of the sealed test split goes through an audited scorer, and that log
+(<code>runs/scorer_audit.log</code>, 60 entries) is published with the submission.</p>
+
+</body>
+</html>

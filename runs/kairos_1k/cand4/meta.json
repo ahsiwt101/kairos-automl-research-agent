@@ -1,0 +1,1 @@
+{"names": ["baseline_score", "user_decile_lv_rate_smoothed", "user_decile_lv_rate_minus_user_rate", "user_decile_conf_log1p", "duration_decile", "log_duration", "duration_pct_within_user"], "seconds": 16.1, "train_cfg": {}}

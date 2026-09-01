@@ -4,3 +4,5 @@
   prewarm backtest_a/refit
 [1] ROLLBACK  history   Replace the single-tree-on-everything setup with a within-us
 [2] ACCEPT    history   pred:HIT  valid 0.6522+-0.0000 (+0.0744)  stall=0  Replace the single-tree-on-everything setup with
+[3] ROLLBACK  history   Add per-user eatures: a smoothed user	times duration-decile
+[4] reject    history   pred:miss valid 0.6166+-0.0000 (-0.0356)  stall=1  Add user-conditional DURATION-AFFINITY features:

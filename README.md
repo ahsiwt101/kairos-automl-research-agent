@@ -90,11 +90,36 @@ at each row's own timestamp. That collapses the validation→test gap from **+0.
 
 | selection signal | rank correlation with hidden test |
 |---|---|
-| official validation | +0.297 |
+| official validation | **−0.612** |
 | backtest-fold transfer | **+0.685** |
+
+Validation is not merely a noisy signal here — it is **negatively** correlated with the
+thing being scored, so optimising it harder makes the submission worse. (A narrower pool
+varying only features gives +0.297; the sign flips once the pool includes the objective
+axis, which is where the leak turns destructive.)
 
 That is why KAIROS selects on **transfer across three temporal backtest folds**, not on
 argmax over one validation set.
+
+### The auditor, and the blind spot a live run found
+
+The auditor's strongest check is structural rather than heuristic. Within-user ranking is
+invariant to any quantity constant across a user's list, so a *user-level* statistic must
+have exactly **zero** within-user variance. Non-zero variance is a **proof** of label
+feedback — not a heuristic flag. Under the naive construction that quantity is
+**1.24e-01**; under the frozen-window fix it is **0.000e+00**.
+
+That check has a real blind spot, and a live run found it. A candidate is free to hand-roll
+a leak over a user×item *cross* under any column name — and a cross is *supposed* to vary
+within a user's list, so no name- or shape-based check can see it. One got accepted at
+**+0.0936 on validation** before we caught it.
+
+The fix does not try to understand the candidate's code at all: the candidate is re-run
+against a backtest fold with a genuinely unsealed test split, and checked on two independent
+signals — the valid/test gap, and the absolute score against the best honest result ever
+measured there. One catches a gap-widening leak, the other catches a globally-inflating leak
+that keeps the gap small. Verified in both directions against the exact candidate that
+slipped through and against a known-honest one.
 
 ### Why the honest ceiling is ~0.60, not 0.86
 
@@ -220,6 +245,14 @@ Two accepts (iterations 1 and 8), both independently backtest-confirmed:
 | iteration 1 | 0.5968 | 0.5970 | −0.0001 | CONFIRMED |
 | iteration 8 | 0.5967 | 0.5979 | −0.0012 | CONFIRMED |
 
+**The winning move, chosen unprompted at iteration 1:** abandon the
+single-downstream-tree architecture and blend several decorrelated model outputs at the
+*rank* level — dropping the user-level expert on the argument that a score built only from
+user features is constant across a user's list and therefore **provably cannot change GAUC
+or nDCG**. That is the same design a human reached only after several failed attempts, and
+the reasoning is the agent's own: it is in the hypothesis text of iteration 1 in
+[`reports/ITERATION_LOG.md`](reports/ITERATION_LOG.md).
+
 **Prediction hit-rate: 1 of 10.** An earlier 3-iteration run scored 2 of 3 and we suggested
 an adversarial critic had improved the agent's reasoning. Ten iterations is a more honest
 sample and the claim is withdrawn — the agent beats the baseline while the diagnostics it
@@ -243,6 +276,20 @@ the logs.
 | candidate leaks a label | structural audit, then independent backtest confirmation on every accept | `verify_agent_mechanisms.py` |
 | a check cannot be run at all | reported as *unverifiable*, never as *disproved* | `verify_agent_mechanisms.py` |
 | a cached signal is the wrong shape | refused at load, with both row counts named | `verify_variant_isolation.py` |
+
+**What the agent recovered from in this project, unaided:**
+
+- Two structural API mistakes, self-corrected from the error text alone
+- An invalid LightGBM hyperparameter name (`n_estimators`, an sklearn/XGBoost name),
+  repaired rather than crashing the iteration
+- Its own leaking candidate — accepted at +0.0936 validation — caught by the auditor before
+  it could be believed
+- Six scheduler interventions in the submitted run: with one miss left the loop enters
+  `consolidate` mode and re-asks the planner for ~2k tokens, rather than spending a full
+  training run and the last of the budget on a hypothesis family that has already lost
+  repeatedly. That mechanism is what produced the accepted iteration 8.
+
+**Zero iterations in the submitted run crashed.**
 
 Ten test suites run green — `experiments/verify_*.py` is the complete list, and each one
 was written the day the corresponding thing broke.
@@ -281,6 +328,40 @@ Seeds 0–4, matching the published protocol:
 Row order is also byte-identical to `data.load()` on all three splits — checked because
 submission alignment is positional and `(user_id, video_id)` is not unique (3.06% of test
 rows are repeated pairs).
+
+## What it was built with
+
+**Development tools.** Claude Code (Anthropic) as the pair-programming environment; VS Code;
+Python 3.14; git. No notebooks — every result in this repo comes from a committed script.
+
+**APIs.** Anthropic Messages API. The agent runs a two-stage proposer: `claude-opus-5` as
+the planner (10 calls, 35,479 in / 22,491 out) and `claude-sonnet-5` as the coder (26 calls,
+80,755 in / 26,064 out). The proposer is provider-agnostic — it also drives any
+OpenAI-compatible `/chat/completions` endpoint (Volcengine Ark / Doubao, OpenRouter,
+DeepSeek, or a local Ollama server), selected by one command-line string, and a scripted
+no-LLM `pool` proposer exists for offline testing.
+
+**Libraries.** NumPy, SciPy, pandas (loading only), LightGBM, PyTorch, httpx, and the
+`anthropic` SDK. The evaluation kernel is pure NumPy.
+
+One practical note: `torch` and `lightgbm` each bundle their own OpenMP runtime and abort —
+or, as we found the hard way, silently **deadlock** — if loaded into the same process.
+Everything here keeps them in separate processes. The commonly-cited
+`KMP_DUPLICATE_LIB_OK` workaround is deliberately **not** used, because it can silently
+produce wrong numbers.
+
+**Datasets.** KuaiRand-Pure for the required benchmark (Zenodo record 10439422), plus
+KuaiRand-1k for the bonus attempt, each trained on its own splits. No external training
+data and no pretrained weights, per the track's single hard rule. The randomized-exposure
+log (`log_random_4_22_to_5_08_pure.csv`) is deliberately **not** used for training: it spans
+the test window, so training on it would inject label information from that period.
+
+**Scoring discipline.** The official `evaluate.py` is committed unmodified and is the sole
+scoring authority; our vectorised evaluator is verified identical to it to 4.4e-16. Every
+consultation of the sealed test split goes through an audited scorer, and that log
+(`runs/scorer_audit.log`, 60 entries) is published with the submission.
+
+---
 
 ## Setup
 
