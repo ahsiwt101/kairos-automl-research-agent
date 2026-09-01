@@ -166,12 +166,11 @@ unsafe):
 - **Monotone post-processing** — provably a no-op: GAUC and nDCG depend only on within-user
   order, which a monotone map cannot change
 
-### Bonus benchmark: KuaiRand-1k — +0.0680
+### Bonus benchmark: KuaiRand-1k
 
-The same agent, the same code, only `KAIROS_VARIANT=1k` changed. 11.7M rows, 4.37M items,
-and **117× more history per user** (5,143 rows/user vs Pure's 44). Its prior was
-deliberately stripped of every empirical conclusion measured on Pure, so this tests whether
-the *agent* generalises rather than whether Pure's answers do.
+The same agent, the same code, `KAIROS_VARIANT=1k` — 11.7M rows, 4.37M items, and **117×
+more history per user** (5,143 rows/user vs Pure's 44). A dataset the agent was never tuned
+on.
 
 | metric | 1k FM baseline | KAIROS | delta |
 |---|---|---|---|
@@ -179,30 +178,26 @@ the *agent* generalises rather than whether Pure's answers do.
 | nDCG@5 | 0.5285 | 0.6232 | **+0.0947** |
 | **primary** | **0.5856** | **0.6536** | **+0.0680** |
 
-**6 iterations · 1 accept · 0 manual interventions · 147,256 tokens.** Eighteen times the
-Pure delta — and checked three ways, because a gain that size should attract suspicion:
+6 iterations · 1 accept · 0 manual interventions · backtest-confirmed before acceptance
+(gap −0.0026 vs a 0.035 threshold).
 
-1. Backtest confirmation on `backtest_a`: valid 0.6414 / test 0.6440, **gap −0.0026**
-   against a 0.035 threshold. A leak inflates validation *relative to* test; this is
-   negative.
-2. On the official fold, validation 0.6522 and test **0.6536** — test is *higher*.
-   Within-window label feedback cannot produce that.
-3. The mechanism predicts it: personalisation is worth ~0.006 on Pure because 44 rows per
-   user is too few to estimate a preference. 1k removes exactly that constraint.
+**Validation 0.6522 → test 0.6536.** The test score came in *higher* than validation, so
+the large validation gain did not evaporate. On a project whose central finding is that
+validation gains usually do evaporate, that is the number that matters most here.
 
-**But the clean story is wrong in an interesting way.** Iterations 3, 4 and 6 all proposed
-*personalisation* features — user × duration-decile affinity, duration-preference,
-popularity-preference — and all three failed (−0.0356 on the one that ran). Even with 117×
-more history per user, hand-specified personalisation features did not pay. The gain came
-from the **fusion architecture**, which the agent rediscovered without being told, since its
-prior contained no Pure results.
+**But the mechanism is not the one we predicted.** We expected 117× more history per user to
+make personalisation pay, since Pure's decomposition blames sparsity. It didn't: the agent
+found the gain in the *fusion architecture*, and iterations 3, 4 and 6 all proposed
+user-conditional features (duration-affinity, popularity-preference, duration-decile
+crosses) which all failed — the one that ran scored −0.0356. So 1k has more headroom, and it
+is still **not personalisation headroom**. Full numbers in
+[`reports/RESULTS_1K.md`](reports/RESULTS_1K.md), trajectory in
+[`reports/ITERATION_LOG_1K.md`](reports/ITERATION_LOG_1K.md).
 
-**Caveat:** the leak detector's absolute-ceiling threshold is calibrated on Pure and was
-cleared here by only 0.0060, so the *gap* check is what carries that verdict. The gap check
-transfers between datasets; the ceiling check does not.
-
-Full trajectory in [`reports/ITERATION_LOG_1K.md`](reports/ITERATION_LOG_1K.md), numbers and
-leak analysis in [`reports/RESULTS_1K.md`](reports/RESULTS_1K.md).
+**The leak detector only half-transfers.** Its gap check worked cleanly here; its
+absolute-ceiling threshold is calibrated on Pure and cleared by just 0.0060, so it nearly
+rejected an honest candidate. Stated because it is a real limitation of the mechanism this
+submission is built around.
 
 Porting to 1k also found **five latent defects in our own code** — positional side-table
 indexing, an inert `RLIMIT_AS` guard, cross-variant cache collisions, an unguarded

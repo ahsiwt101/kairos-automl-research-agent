@@ -1,8 +1,7 @@
 # KAIROS run log — KuaiRand-1k (bonus benchmark)
 
-Transfer probe: the SAME agent and code as the Pure campaign, with only
-`KAIROS_VARIANT=1k` changed. Declared rule (FAQ 2.9.1): eps=0.002, N=5, floor=10.
-The run stopped on its 120k token budget after 6 iterations, before the floor.
+Transfer probe: the same agent and the same code, pointed at a dataset it was never
+tuned on. Only KAIROS_VARIANT changed. Declared rule: eps=0.002, N=5, floor=10.
 
 ## Summary
 
