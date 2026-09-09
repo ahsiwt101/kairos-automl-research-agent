@@ -1,6 +1,6 @@
 # KAIROS — an autonomous ML research agent that knows when its validation set is lying
 
-**TikTok TechJam 2026 — Track 2: Autonomous ML Research Agent for Recommender Systems**
+**Autonomous ML Research Agent for Recommender Systems**
 Benchmark: KuaiRand-Pure, within-user ranking on `long_view`, primary = mean(GAUC, nDCG@5).
 
 | | valid | hidden test | vs baseline | produced by |
